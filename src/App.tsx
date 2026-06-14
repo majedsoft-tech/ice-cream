@@ -21,7 +21,10 @@ import {
   ShoppingBag as CartIcon,
   HelpCircle,
   Clock,
-  MessageCircle
+  MessageCircle,
+  LayoutGrid,
+  List,
+  Link
 } from 'lucide-react';
 import { CONTAINER_OPTIONS, FLAVOR_OPTIONS, TOPPING_OPTIONS, DISCOUNTS, DEFAULT_CURRENCY } from './data';
 import { ContainerOption, FlavorOption, ToppingOption, CartItem, SaleRecord, OrderDiscount, OnlineOrder } from './types';
@@ -35,7 +38,7 @@ const cleanForFirestore = <T,>(obj: T): T => {
 
 export default function App() {
   // --- STATE ---
-  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'History' | 'Prices'>('POS');
+  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices'>('OnlineOrders');
 
   const [containers, setContainers] = useState<ContainerOption[]>(() => {
     const saved = localStorage.getItem('ice_cream_containers');
@@ -231,6 +234,7 @@ export default function App() {
 
   // --- ONLINE ORDERS MAIN POS STATE ---
   const [onlineOrders, setOnlineOrders] = useState<OnlineOrder[]>([]);
+  const [onlineViewLayout, setOnlineViewLayout] = useState<'grid' | 'list'>('list');
   const [previousPendingCount, setPreviousPendingCount] = useState<number>(0);
   
   // Sales Ledger State
@@ -387,8 +391,12 @@ export default function App() {
       snapshot.forEach((docSnap) => {
         ordersList.push(docSnap.data() as OnlineOrder);
       });
-      // Sort orders by timestamp descending
-      ordersList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      // Sort: Pending first, then by timestamp descending
+      ordersList.sort((a, b) => {
+        if (a.status === 'pending' && b.status !== 'pending') return -1;
+        if (a.status !== 'pending' && b.status === 'pending') return 1;
+        return b.timestamp.localeCompare(a.timestamp);
+      });
       setOnlineOrders(ordersList);
     }, (error) => {
       console.error("Error listening to online orders:", error);
@@ -873,6 +881,7 @@ export default function App() {
       setRecentOnlineOrderId(orderId);
       setCustomerCart([]);
       setIsCartOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       triggerNotice('تم إرسال طلبك السحابي للمطبخ بنجاح! 🚀 تمتع بمشاهدة حالة التحضير الحية.', 'success');
     } catch (e: any) {
       console.error('Customer Order Submit Error:', e);
@@ -906,6 +915,7 @@ export default function App() {
     setRecentOnlineOrderId(null);
     setActiveCustomerOrder(null);
     setSelfCustomerName('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // --- HISTORIC STATISTICS ---
@@ -1027,7 +1037,10 @@ export default function App() {
               <button
                 type="button"
                 id="cart-overlay-button"
-                onClick={() => setIsCartOpen(!isCartOpen)}
+                onClick={() => {
+                  setIsCartOpen(!isCartOpen);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 className="relative flex items-center gap-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 border-pink-707 cursor-pointer hover:bg-pink-600 hover:shadow-md transition active:scale-95 duration-200 shrink-0 self-center"
               >
                 <div className="relative">
@@ -1226,7 +1239,10 @@ export default function App() {
                     <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2">١. الأكواب المصممة في سلتك</h3>
                     <button
                       type="button"
-                      onClick={() => setIsCartOpen(false)}
+                      onClick={() => {
+                        setIsCartOpen(false);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
                       className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-2.5 py-1.5 rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-1 active:scale-95"
                     >
                       <span>← العودة للتصميم 🍦</span>
@@ -1240,7 +1256,10 @@ export default function App() {
                       <p className="text-[10px] font-bold max-w-sm mx-auto leading-relaxed">قم بتكوين آيس كريم مخصّص، ثم أضفه للسلة ليكتمل طلبك ويصل للمطبخ.</p>
                       <button
                         type="button"
-                        onClick={() => setIsCartOpen(false)}
+                        onClick={() => {
+                          setIsCartOpen(false);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                         className="mt-2 inline-flex items-center gap-1.5 bg-pink-500 hover:bg-pink-600 text-white font-black text-xs px-5 py-3 rounded-xl transition cursor-pointer shadow-md border-b-2 border-pink-700"
                       >
                         ابدأ تصميم آيس كريم جديد 🍧
@@ -1435,7 +1454,10 @@ export default function App() {
                     
                     <button
                       type="button"
-                      onClick={() => setIsCartOpen(false)}
+                      onClick={() => {
+                        setIsCartOpen(false);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
                       className="w-full py-2.5 bg-slate-50 hover:bg-slate-150 border-2 border-slate-200 text-slate-650 hover:text-slate-800 transition rounded-xl text-[11px] font-black text-center block cursor-pointer"
                     >
                       العودة لتعديل وتصميم الأكواب 🍧
@@ -1690,11 +1712,13 @@ export default function App() {
                   ? cartTotals.finalTotal.toFixed(2) 
                   : activeTab === 'OnlineOrders'
                     ? onlineOrders.length
-                    : activeTab === 'History' 
-                      ? salesStats.totalRevenue.toFixed(2) 
-                      : (containers.length + flavors.length + toppings.length).toFixed(0)}
+                    : activeTab === 'OnlineSetup'
+                      ? 'نشط'
+                      : activeTab === 'History' 
+                        ? salesStats.totalRevenue.toFixed(2) 
+                        : (containers.length + flavors.length + toppings.length).toFixed(0)}
                 <span className="text-xs font-bold mr-1 text-pink-600">
-                  {activeTab === 'OnlineOrders' ? 'طلب' : activeTab === 'Prices' ? 'مادة' : 'ريال'}
+                  {activeTab === 'OnlineOrders' ? 'طلب' : activeTab === 'OnlineSetup' ? 'بث' : activeTab === 'Prices' ? 'مادة' : 'ريال'}
                 </span>
               </div>
               <div className="text-slate-400 font-black uppercase text-[9px] tracking-wider mt-1 font-sans">
@@ -1702,9 +1726,11 @@ export default function App() {
                   ? 'الحساب المستحق الحالي' 
                   : activeTab === 'OnlineOrders'
                     ? 'طلبات الخدمة الذاتية النشطة'
-                    : activeTab === 'History' 
-                      ? 'إجمالي الدخل اليومي الصافي' 
-                      : 'قائمة الأسعار والمنتجات الفعالة'}
+                    : activeTab === 'OnlineSetup'
+                      ? 'إعداد الرابط والباركود للجمهور'
+                      : activeTab === 'History' 
+                        ? 'إجمالي الدخل اليومي الصافي' 
+                        : 'قائمة الأسعار والمنتجات الفعالة'}
               </div>
             </div>
 
@@ -1745,6 +1771,18 @@ export default function App() {
                     {onlineOrders.length}
                   </span>
                 ) : null}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('OnlineSetup')}
+                className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer relative ${
+                  activeTab === 'OnlineSetup'
+                    ? 'bg-teal-600 text-white shadow-[4px_4px_0px_0px_rgba(30,41,59,0.1)] border-2 border-teal-700'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                }`}
+              >
+                <Link className="w-4 h-4" />
+                <span>إعداد الطلب الذاتي 🌐</span>
               </button>
 
               <button
@@ -2474,76 +2512,70 @@ export default function App() {
           /* --- TAB: ONLINE SELF-SERVICE ORDERS --- */
           <div className="space-y-6">
             
-            {/* LINK INFORMATION CARD */}
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-3xl p-6 border-4 border-emerald-700 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="space-y-2">
+            {/* MINI COMPACT QUICK STATS */}
+            <div className="bg-white rounded-3xl p-4 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.05)]">
+              <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-3xl">🔗</span>
-                  <h2 className="text-xl font-black">رابط الخدمة الذاتية والطلب الذاتي (أونلاين)</h2>
+                  <span className="text-xl">📊</span>
+                  <span className="text-xs font-black text-slate-705 font-sans">ملخص حالة الطلبات السحابية:</span>
                 </div>
-                <p className="text-xs text-emerald-100 font-extrabold max-w-2xl leading-relaxed">
-                  قم بمشاركة هذا الرابط مع عملائك، أو افتحه في شاشة تابلت إضافية مخصصة للجمهور عند طابور المحل، لتمكينهم من تركيب طلباتهم بأنفسهم والدفع عند الاستلام. ستظهر طلباتهم هنا فوراً مع تنبيهات صوتية حية!
-                </p>
-                <div className="bg-emerald-900/45 p-2.5 rounded-xl text-xs font-mono font-bold select-all inline-block border border-white/10" dir="ltr">
-                  {window.location.origin + window.location.pathname}#/
-                </div>
-              </div>
-              <a
-                href="#/"
-                target="_blank"
-                rel="noreferrer"
-                className="bg-white text-emerald-700 hover:bg-emerald-50 font-black px-6 py-3.5 rounded-2xl transition hover:scale-[1.02] shadow-lg flex items-center gap-2 shrink-0 text-xs text-center border-b-4 border-emerald-200"
-              >
-                <span>فتح صفحة الطلب الذاتي للعميل 🚀</span>
-              </a>
-            </div>
-
-            {/* ORDERS GRID SUMMARY BY CATEGORY */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between">
-                <div className="flex justify-between items-start text-xs text-slate-400 font-bold uppercase">
-                  <span>الطلبات الواردة</span>
-                  <span className="text-lg">🕒</span>
-                </div>
-                <div className="mt-2 text-2xl font-black text-amber-500 font-mono">
-                  {onlineOrders.filter(o => o.status === 'pending').length}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between">
-                <div className="flex justify-between items-start text-xs text-slate-400 font-bold uppercase">
-                  <span>جاري تحضيرها</span>
-                  <span className="text-lg">👨‍🍳</span>
-                </div>
-                <div className="mt-2 text-2xl font-black text-blue-500 font-mono">
-                  {onlineOrders.filter(o => o.status === 'accepted').length}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between">
-                <div className="flex justify-between items-start text-xs text-slate-400 font-bold uppercase">
-                  <span>جاهزة للاستلام</span>
-                  <span className="text-lg">✅</span>
-                </div>
-                <div className="mt-2 text-2xl font-black text-emerald-500 font-mono">
-                  {onlineOrders.filter(o => o.status === 'prepared').length}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between">
-                <div className="flex justify-between items-start text-xs text-slate-400 font-bold uppercase">
-                  <span>إجمالي السحابة</span>
-                  <span className="text-lg">📊</span>
-                </div>
-                <div className="mt-2 text-2xl font-black text-slate-800 font-mono">
-                  {onlineOrders.length}
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 w-full lg:w-auto">
+                  <div className="bg-amber-50/50 border-2 border-amber-200 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
+                    <span className="text-[10.5px] font-bold text-amber-700">الواردة 🕒</span>
+                    <span className="text-xs font-black font-mono text-amber-600">{onlineOrders.filter(o => o.status === 'pending').length}</span>
+                  </div>
+                  
+                  <div className="bg-blue-50/50 border-2 border-blue-200 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
+                    <span className="text-[10.5px] font-bold text-blue-700">جاري التحضير 👨‍🍳</span>
+                    <span className="text-xs font-black font-mono text-blue-600">{onlineOrders.filter(o => o.status === 'accepted').length}</span>
+                  </div>
+                  
+                  <div className="bg-emerald-50/50 border-2 border-emerald-200 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
+                    <span className="text-[10.5px] font-bold text-emerald-700">جاهزة للاستلام ✅</span>
+                    <span className="text-xs font-black font-mono text-emerald-600">{onlineOrders.filter(o => o.status === 'prepared').length}</span>
+                  </div>
+                  
+                  <div className="bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
+                    <span className="text-[10.5px] font-bold text-slate-700">الإجمالي 📊</span>
+                    <span className="text-xs font-black font-mono text-slate-800">{onlineOrders.length}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* MAIN ORDERS VIEW LIST */}
             <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_0px_rgba(30,41,59,0.1)]">
-              <h3 className="font-black text-slate-800 text-lg mb-6 border-r-4 border-pink-500 pr-3">قائمة الطلبات السحابية الواردة</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-dashed border-slate-150">
+                <h3 className="font-black text-slate-800 text-base border-r-4 border-pink-500 pr-3">قائمة الطلبات السحابية الواردة</h3>
+                
+                {/* VIEW LAYOUT SWITCHERS */}
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl self-end sm:self-auto font-sans">
+                  <button
+                    type="button"
+                    onClick={() => setOnlineViewLayout('grid')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                      onlineViewLayout === 'grid'
+                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-750'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>عرض شبكة 👥</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOnlineViewLayout('list')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                      onlineViewLayout === 'list'
+                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-750'
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span>عرض قائمة 📄</span>
+                  </button>
+                </div>
+              </div>
 
               {onlineOrders.length === 0 ? (
                 <div className="text-center py-16 px-4 space-y-4">
@@ -2554,109 +2586,136 @@ export default function App() {
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className={onlineViewLayout === 'grid' ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "grid grid-cols-1 gap-3.5"}>
                   {onlineOrders.map((order) => {
+                    const statusConfig = {
+                      pending: { badgeBg: 'bg-amber-50 border-amber-200 text-amber-700 animate-pulse', label: '🕒 جديد قيد الانتظار' },
+                      accepted: { badgeBg: 'bg-blue-50 border-blue-200 text-blue-700', label: '👨‍🍳 جاري التحضير بالمطبخ' },
+                      prepared: { badgeBg: 'bg-emerald-50 border-emerald-250 text-emerald-700', label: '✅ مكتمل ومسلم للعميل' },
+                      cancelled: { badgeBg: 'bg-red-50 border-red-200 text-red-700', label: '❌ ملغى' }
+                    }[order.status] || { badgeBg: 'bg-slate-50 border-slate-200 text-slate-700', label: order.status };
+
+                    const isList = onlineViewLayout === 'list';
+
                     return (
                       <div 
                         key={order.id} 
-                        className={`rounded-3xl border-4 p-6 flex flex-col justify-between gap-5 transition-all ${
+                        className={`rounded-2xl border-2 transition-all duration-200 ${
+                          isList 
+                            ? 'p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4' 
+                            : 'p-4 flex flex-col justify-between gap-3.5'
+                        } ${
                           order.status === 'pending'
-                            ? 'bg-amber-50/30 border-amber-400 shadow-[6px_6px_0px_rgba(245,158,11,0.15)]'
+                            ? 'bg-amber-50/20 border-amber-300 shadow-sm'
                             : order.status === 'accepted'
-                            ? 'bg-blue-50/20 border-blue-400 shadow-[6px_6px_0px_rgba(59,130,246,0.15)]'
+                            ? 'bg-blue-50/10 border-blue-300 shadow-sm'
                             : order.status === 'prepared'
-                            ? 'bg-emerald-50/10 border-emerald-400 opacity-90 hover:opacity-100'
-                            : 'bg-slate-50 border-slate-200 opacity-60'
+                            ? 'bg-emerald-50/5 border-emerald-250 opacity-95'
+                            : 'bg-slate-50/85 border-slate-200 opacity-60'
                         }`}
                       >
-                        {/* Order info header */}
-                        <div className="flex items-center justify-between gap-2 border-b border-dashed pb-3 border-slate-300">
-                          <div>
-                            <span className="text-[11px] font-mono font-bold block opacity-60">رقم التعريف السحابي: {order.orderNumber}</span>
-                            <span className="text-lg font-black text-slate-800 block mt-0.5">
+                        {/* 1. Header/Info Section */}
+                        <div className={`flex justify-between gap-2.5 font-sans ${
+                          isList 
+                            ? 'flex-row lg:flex-col lg:justify-center items-center lg:items-start lg:pl-4 lg:border-l lg:border-dashed lg:border-slate-200 shrink-0 lg:w-[170px]' 
+                            : 'items-center border-b border-dashed pb-2.5 border-slate-200'
+                        }`}>
+                          <div className="space-y-0.5">
+                            <span className="text-[9.5px] font-mono font-bold block text-slate-400">رقم: {order.orderNumber}</span>
+                            <span className="text-xs sm:text-sm font-black text-slate-800 block">
                               👤 {order.customerName}
                             </span>
+                            {isList && (
+                              <span className="text-[10px] text-slate-400 font-bold block">
+                                {order.timestamp.split('،')[1]?.trim() || order.timestamp}
+                              </span>
+                            )}
                           </div>
 
-                          <div className="text-left font-sans">
-                            <span className="text-[10px] font-bold block opacity-60">{order.timestamp.split('،')[1]?.trim() || order.timestamp}</span>
-                            <span className={`inline-block text-[10px] font-black px-2.5 py-1 rounded-full mt-1 border ${
-                              order.status === 'pending'
-                                ? 'bg-amber-100 border-amber-300 text-amber-700 animate-pulse'
-                                : order.status === 'accepted'
-                                ? 'bg-blue-100 border-blue-300 text-blue-700'
-                                : order.status === 'prepared'
-                                ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
-                                : 'bg-red-100 border-red-300 text-red-700'
-                            }`}>
-                              {order.status === 'pending' ? '🕒 بانتظار قبول البائع' :
-                               order.status === 'accepted' ? '👨‍🍳 جاري التجهيز' :
-                               order.status === 'prepared' ? '✅ تم التسليم والمكتمل' :
-                               '❌ ملغى'}
+                          <div className="text-left flex flex-col items-end shrink-0">
+                            {!isList && (
+                              <span className="text-[10px] text-slate-400 font-bold mb-1">
+                                {order.timestamp.split('،')[1]?.trim() || order.timestamp}
+                              </span>
+                            )}
+                            <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-lg border ${statusConfig.badgeBg}`}>
+                              {statusConfig.label}
                             </span>
                           </div>
                         </div>
 
-                        {/* Items listed */}
-                        <div className="space-y-3 flex-1">
+                        {/* 2. Items List Section */}
+                        <div className={`space-y-2 flex-1 min-w-0 ${isList ? 'my-1' : ''}`}>
                           {order.items.map((it, idx) => (
-                            <div key={idx} className="bg-white/80 p-3 rounded-2xl border border-slate-200 text-xs space-y-1.5 font-sans">
+                            <div key={idx} className="bg-white/80 p-2 rounded-xl border border-slate-200 text-[11px] space-y-1 font-sans">
                               <div className="flex justify-between font-black text-slate-800">
                                 <span>{it.container.name} ×{it.quantity}</span>
                                 <span className="font-mono text-slate-500">{(it.basePrice * it.quantity).toFixed(2)} ر.س</span>
                               </div>
-                              <div className="text-[10px] text-slate-500 font-bold">
-                                🥣 النكهات: {it.flavors.map(f => `${f.emoji} ${f.name}`).join('، ')}
+                              <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                                <span>🥣 النكهات:</span>
+                                <span className="text-slate-600 font-medium">{it.flavors.map(f => `${f.emoji} ${f.name}`).join('، ')}</span>
                               </div>
                               {it.toppings.length > 0 && (
-                                <div className="text-[10px] text-emerald-600 font-black">
-                                  ✨ الإضافات: {it.toppings.map(t => `${t.emoji} ${t.name}`).join(' + ')}
+                                <div className="text-[10px] text-emerald-700 font-black flex items-center gap-1">
+                                  <span>✨ الإضافات:</span>
+                                  <span className="text-emerald-600 font-medium">{it.toppings.map(t => `${t.emoji} ${t.name}`).join(' + ')}</span>
                                 </div>
                               )}
                             </div>
                           ))}
                         </div>
 
-                        {/* Totals & actions layout */}
-                        <div className="pt-4 border-t border-dashed border-slate-200 mt-2">
-                          <div className="flex items-center justify-between text-xs font-bold text-slate-600 font-sans mb-1.5">
-                            <span className="opacity-75">المبلغ الإجمالي المستحق:</span>
-                            <span className="text-base font-black text-pink-600 font-mono">{order.total.toFixed(2)} ريال سعودي</span>
-                          </div>
+                        {/* 3. Financials & Action Buttons Section */}
+                        <div className={`mt-1 ${
+                          isList 
+                            ? 'flex flex-row lg:flex-col justify-between lg:justify-center items-center lg:items-stretch lg:pr-4 lg:border-r lg:border-dashed lg:border-slate-200 shrink-0 lg:w-[220px] gap-2' 
+                            : 'pt-3 border-t border-dashed border-slate-200'
+                        }`}>
+                          {/* Payment information and totals */}
+                          <div className={`space-y-1 font-sans text-right ${isList ? 'shrink-0 lg:text-left' : ''}`}>
+                            <div className="flex items-center gap-2 lg:justify-between text-[11px] font-bold text-slate-500">
+                              <span className="opacity-75">الإجمالي:</span>
+                              <span className="text-xs sm:text-sm font-black text-pink-600 font-mono">{order.total.toFixed(2)} ريال</span>
+                            </div>
 
-                          <div className="flex items-center justify-between text-xs font-bold text-slate-600 font-sans mb-3.5 pb-2 border-b border-dashed border-slate-150">
-                            <span className="opacity-75">طريقة الدفع المطلوبة:</span>
-                            <span className="text-xs font-black text-slate-800">
-                              {order.paymentMethod === 'card' ? (
-                                <span className="inline-flex items-center gap-1">
-                                  <span>💳 تحويل بنكي</span>
-                                  <span className="bg-pink-100 text-pink-600 px-2.5 py-0.5 rounded-lg text-[9px] font-black">
-                                    {order.bankSubMethod === 'stc' ? 'STC Pay 📱' :
-                                     order.bankSubMethod === 'barq' ? 'barq ⚡' :
-                                     order.bankSubMethod === 'urpay' ? 'urpay 💳' : 'بنك آخر 🏦'}
+                            <div className="flex items-center gap-1.5 lg:justify-between text-[10px] font-bold text-slate-400">
+                              <span className="opacity-75">الدفع:</span>
+                              <span className="text-slate-700 font-black inline-flex items-center">
+                                {order.paymentMethod === 'card' ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span>💳 شبكة</span>
+                                    <span className="bg-pink-100/70 border border-pink-200 text-pink-600 px-1.5 py-0.5 rounded-md text-[8.5px] font-black leading-none">
+                                      {order.bankSubMethod === 'stc' ? 'STC Pay' :
+                                       order.bankSubMethod === 'barq' ? 'barq' :
+                                       order.bankSubMethod === 'urpay' ? 'urpay' : 'بنك'}
+                                    </span>
                                   </span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5">
-                                  <Coins className="w-3.5 h-3.5 inline text-amber-500" />
-                                  <span>نقدي / كاش</span>
-                                </span>
-                              )}
-                            </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-slate-600">
+                                    <Coins className="w-3 h-3 text-amber-500" />
+                                    <span>نقدي</span>
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </div>
 
-                          <div className="flex gap-2">
+                          {/* Action button triggers - scaled down & compact */}
+                          <div className={`flex gap-1.5 ${isList ? 'w-auto lg:w-full items-center justify-end' : 'mt-2.5'}`}>
                             {order.status === 'pending' && (
                               <>
                                 <button
+                                  type="button"
                                   onClick={() => handleAcceptOnlineOrder(order.id)}
-                                  className="flex-1 bg-amber-500 hover:bg-amber-600 border-b-4 border-amber-700 hover:border-amber-800 text-white font-black text-xs py-3 rounded-xl transition cursor-pointer text-center"
+                                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[10.5px] py-1.5 px-3 rounded-lg transition cursor-pointer text-center whitespace-nowrap active:scale-95 duration-100 flex-1"
                                 >
-                                  قبول الطلب وبدء التحضير 👨‍🍳✅
+                                  قبول وتحضير 👨‍🍳⚡
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={() => handleCancelOnlineOrder(order.id)}
-                                  className="bg-red-50 hover:bg-red-100 border-2 border-red-200 text-red-600 font-black text-xs px-4 rounded-xl transition cursor-pointer text-center"
+                                  className="bg-red-50 hover:bg-red-150 border border-red-200 text-red-600 font-black text-[10.5px] py-1.5 px-2 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100"
                                 >
                                   رفض ❌
                                 </button>
@@ -2665,22 +2724,23 @@ export default function App() {
 
                             {order.status === 'accepted' && (
                               <button
+                                type="button"
                                 onClick={() => handlePrepareOnlineOrder(order)}
-                                className="w-full bg-emerald-500 hover:bg-emerald-600 border-b-4 border-emerald-700 hover:border-emerald-800 text-white font-black text-xs py-3.5 rounded-xl transition cursor-pointer text-center"
+                                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-black text-[11px] py-2 px-3 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100"
                               >
-                                تم تجهيز الطلب وتسليمه للعميل 🎉الآن 🔔
+                                تم التجهيز والتسليم للعميل 🔔✅
                               </button>
                             )}
 
                             {order.status === 'prepared' && (
-                              <div className="w-full bg-emerald-50 border-2 border-emerald-200 text-emerald-700 font-black text-xs py-2 inline-flex items-center justify-center rounded-xl text-center">
-                                مكتمل جاهز وتم دمجه بسجلات الكاشير بنجاح 🍦🏆
+                              <div className="w-full bg-emerald-50 text-emerald-700 font-extrabold text-[10px] py-1 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-emerald-150">
+                                مكتمل ومسجل سحابياً كاشير 🍦🏆
                               </div>
                             )}
 
                             {order.status === 'cancelled' && (
-                              <div className="w-full bg-slate-100 text-slate-500 font-black text-xs py-2 inline-flex items-center justify-center rounded-xl text-center">
-                                هذا الطلب ملغى وغير نشط
+                              <div className="w-full bg-slate-100 text-slate-500 font-bold text-[10px] py-1 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-slate-200">
+                                تم إلغاء الطلب ❌
                               </div>
                             )}
                           </div>
@@ -2691,6 +2751,137 @@ export default function App() {
                   })}
                 </div>
               )}
+            </div>
+
+          </div>
+        ) : activeTab === 'OnlineSetup' ? (
+          
+          /* --- TAB: ONLINE SELF-SERVICE SETUP & QR --- */
+          <div className="space-y-6">
+            
+            {/* LINK INFORMATION CARD */}
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-3xl p-6 border-4 border-emerald-700 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl">🔗</span>
+                  <h2 className="text-xl font-black">رابط الخدمة الذاتية والطلب الذاتي (أونلاين)</h2>
+                </div>
+                <p className="text-xs text-emerald-100 font-extrabold max-w-2xl leading-relaxed">
+                  قم بمشاركة هذا الرابط مع عملائك، أو افتحه في شاشة تابلت إضافية مخصصة للجمهور عند طابور المحل، لتمكينهم من تركيب طلباتهم بأنفسهم والدفع عند الاستلام. ستظهر طلباتهم في صفحة المطبخ فوراً مع تنبيهات صوتية حية!
+                </p>
+                <div className="bg-emerald-900/45 p-2.5 rounded-xl text-xs font-mono font-bold select-all inline-block border border-white/10 mt-1.5" dir="ltr">
+                  {window.location.origin + window.location.pathname}#/
+                </div>
+              </div>
+              <a
+                href="#/"
+                target="_blank"
+                rel="noreferrer"
+                className="bg-white text-emerald-700 hover:bg-emerald-50 font-black px-6 py-3.5 rounded-2xl transition hover:scale-[1.02] shadow-lg flex items-center gap-2 shrink-0 text-xs text-center border-b-4 border-emerald-200 cursor-pointer"
+              >
+                <span>فتح صفحة الطلب الذاتي للعميل 🚀</span>
+              </a>
+            </div>
+
+            {/* PREPARATION BANNER & DESK DISPLAY CARD FOR CUSTOMERS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              <div className="bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col items-center text-center space-y-6">
+                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center text-3xl">📱</div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-black text-slate-800">بطاقة طاولة الكاونتر الذكية 🍦</h3>
+                  <p className="text-xs text-slate-400 font-bold max-w-md leading-relaxed">
+                    قم بفتح هذه الشاشة على تابلت جانبي أو لافتة عند كاونتر الاستلام. يسهل للعملاء تصفح المنيو وتجهيز أكوابهم دون طابور الانتظار!
+                  </p>
+                </div>
+                
+                {/* MOCK QR / PRINT BANNER DESIGN */}
+                <div className="border-4 border-dashed border-pink-400 p-6 rounded-3xl bg-pink-50/30 w-full max-w-xs space-y-4">
+                  <div className="mx-auto w-32 h-32 bg-slate-900 rounded-2xl p-3 flex flex-col justify-between items-center text-white relative shadow-md">
+                    <div className="grid grid-cols-4 gap-1 w-full h-full opacity-95">
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-transparent" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-transparent" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-transparent" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-transparent" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-transparent" />
+                      <div className="rounded-sm bg-white" />
+                      <div className="rounded-sm bg-transparent" />
+                      <div className="rounded-sm bg-white" />
+                    </div>
+                    {/* Floating Center Icecream */}
+                    <span className="absolute inset-0 m-auto w-10 h-10 bg-white border-2 border-slate-900 rounded-lg flex items-center justify-center text-xl shadow">🍦</span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] bg-pink-100 text-pink-600 px-2.5 py-0.5 rounded-full font-black">امسح لتبدأ التصميم</span>
+                    <h4 className="text-xs font-black text-slate-800">اصنع كوب الآيس كريم الخاص بك!</h4>
+                    <span className="text-[9px] text-slate-400 font-mono block select-all">{window.location.origin + window.location.pathname}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="bg-slate-800 hover:bg-slate-900 border-b-4 border-slate-950 text-white font-black text-xs py-3 px-6 rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة باركود كود الطاولة للعملاء 🖨️</span>
+                </button>
+              </div>
+
+              <div className="bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6">
+                <div className="flex items-center gap-3 border-b-2 border-slate-200 pb-4 font-sans">
+                  <span className="text-2xl">⚡</span>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800">كيفية البدء واستخدام شاشة الخدمة الذاتية</h3>
+                    <p className="text-[10px] text-slate-400 font-bold">خطوات بسيطة لبدء استقبال الطلبات السحابية التفاعلية</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 text-right">
+                  <div className="flex gap-4 items-start">
+                    <span className="bg-pink-100 text-pink-600 text-xs font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">١</span>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800">افتح رابط الطلب الذاتي للجمهور</h4>
+                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed mt-0.5">
+                        قم بالضغط على الزر في الأعلى لفتح الواجهة المصممة للعميل. يمكنك تشغيلها على أجهزة iPad أو هواتف العملاء أو أي شاشة تفاعلية بالمحل.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <span className="bg-emerald-100 text-emerald-600 text-xs font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">٢</span>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800">يقوم العميل بابتكار الأكواب وجمعها في سلتهم</h4>
+                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed mt-0.5">
+                        سيقوم العميل باختيار حجم الكوب وتمرير النكهات (المانجو، الفراولة، الشوكولاتة...) والصلصات والمكسرات وجمعها في سلة طلباتهم بسهولة.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    <span className="bg-blue-100 text-blue-600 text-xs font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5">٣</span>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800">استلام فوري للطلب بنغمة تنبيه صوتية حية!</h4>
+                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed mt-0.5">
+                        بمجرد أن يرسل العميل طلبه، سيصدر كمبيوتر المطبخ صوتاً ويدخل الطلب كـ "قيد الانتظار". بمجرد قبولك له وتجهيزه، يحصل العميل على تحديث فوري مباشر لحالة طلبه على شاشته!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border-2 border-dashed border-yellow-250 p-4 rounded-2xl text-[10px] font-bold text-yellow-800 leading-relaxed font-sans">
+                  ⚠️ <strong>تنبيه الأمان والخصوصية:</strong> هذا النظام يعمل بقاعدة بيانات حرة سحابية متكاملة لربط العملاء بالبائعين في الزمن الحقيقي، يرجى الترحيب بالعملاء وعرض شاشة البث الحية لمساعدتهم على تسريع استلام طلباتهم.
+                </div>
+              </div>
+
             </div>
 
           </div>
