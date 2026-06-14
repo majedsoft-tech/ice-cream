@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "SaleRecord": {
+      "title": "SaleRecord",
+      "description": "A record of completed sales transactions in POS",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "toppingsTotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "calculatedDiscountName": { "type": "string" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "card"] },
+        "receivedAmount": { "type": "number" },
+        "changeAmount": { "type": "number" },
+        "bankSubMethod": { "type": "string" },
+        "customerName": { "type": "string" }
+      },
+      "required": ["id", "orderNumber", "timestamp", "items", "subtotal", "toppingsTotal", "discountAmount", "calculatedDiscountName", "total", "paymentMethod"]
+    },
+    "PricesSetting": {
+      "title": "PricesSetting",
+      "description": "Configurable prices and details of containers, flavors, and toppings",
+      "type": "object",
+      "properties": {
+        "containers": { "type": "array" },
+        "flavors": { "type": "array" },
+        "toppings": { "type": "array" }
+      },
+      "required": ["containers", "flavors", "toppings"]
+    },
+    "OnlineOrder": {
+      "title": "OnlineOrder",
+      "description": "An online order placed by a customer from the self-ordering screen",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "customerName": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "toppingsTotal": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "prepared", "cancelled"] },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "orderNumber", "customerName", "items", "subtotal", "toppingsTotal", "total", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/sales/{saleId}": {
+      "schema": "SaleRecord",
+      "description": "Collection of all sales records"
+    },
+    "/settings/{settingId}": {
+      "schema": "PricesSetting",
+      "description": "Application pricing settings"
+    },
+    "/online_orders/{orderId}": {
+      "schema": "OnlineOrder",
+      "description": "Collection of customer self-service orders"
+    }
+  }
+}

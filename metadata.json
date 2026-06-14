@@ -1,0 +1,6 @@
+{
+  "name": "حاسبة مبيعات الآيس كريم",
+  "description": "برنامج بسيط ومميز لحساب مبيعات الآيس كريم والتخصيصات من كوب وبسكوت ونكهات وإضافات وحساب الخصومات التلقائية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
