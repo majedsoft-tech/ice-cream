@@ -1159,13 +1159,33 @@ export default function App() {
                   </h2>
                   <div className="flex flex-col gap-2 font-sans text-xs">
                     <label className="text-[11px] text-slate-400 font-extrabold" htmlFor="self-customer-name">اسمك الكريم (لنناديك به عند طابور الاستلام وصناعة الكوب!):</label>
-                    <input
+                    <motion.input
                       type="text"
                       id="self-customer-name"
-                      placeholder="اكتب اسمك الثنائي أو اسم الشهرة..."
+                      placeholder="اكتب اسمك الكريم هنا للبدء..."
                       value={selfCustomerName}
                       onChange={(e) => setSelfCustomerName(e.target.value)}
-                      className="w-full bg-slate-50 border-4 border-slate-100 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-pink-300 focus:bg-white transition animate-none"
+                      animate={{
+                        borderColor: ['#f1f5f9', '#ec4899', '#3b82f6', '#f1f5f9'],
+                        boxShadow: [
+                          '0 0 0 0px rgba(236, 72, 153, 0)',
+                          '0 0 0 8px rgba(236, 72, 153, 0.3)',
+                          '0 0 0 8px rgba(59, 130, 246, 0.3)',
+                          '0 0 0 0px rgba(236, 72, 153, 0)'
+                        ],
+                        scale: [1, 1.015, 1.015, 1]
+                      }}
+                      whileFocus={{
+                        scale: 1.02,
+                        borderColor: '#ec4899',
+                        boxShadow: '0 0 0 10px rgba(236, 72, 153, 0.4)'
+                      }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                      className="w-full bg-white border-4 rounded-2xl px-5 py-3.5 text-sm font-black text-slate-800 placeholder:text-slate-300 focus:outline-none focus:bg-white"
                     />
                   </div>
 
