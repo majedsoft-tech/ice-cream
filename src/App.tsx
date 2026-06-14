@@ -28,6 +28,11 @@ import { ContainerOption, FlavorOption, ToppingOption, CartItem, SaleRecord, Ord
 import { db, OperationType, handleFirestoreError } from './firebase';
 import { collection, doc, setDoc, getDocs, deleteDoc, query, onSnapshot, writeBatch } from 'firebase/firestore';
 
+const cleanForFirestore = <T,>(obj: T): T => {
+  if (!obj) return obj;
+  return JSON.parse(JSON.stringify(obj));
+};
+
 export default function App() {
   // --- STATE ---
   const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'History' | 'Prices'>('POS');
@@ -193,14 +198,19 @@ export default function App() {
   const [custBankSubMethod, setCustBankSubMethod] = useState<string>('stc');
 
   // Dynamic customer customization options
-  const [custContainer, setCustContainer] = useState<ContainerOption>({ id: 'cup', name: 'كوب آيس كريم', description: 'كوب ورقي فاخر وصحي يحفظ البرودة', price: 5.0 });
+  const [custContainer, setCustContainer] = useState<ContainerOption | null>(null);
   const [custFlavors, setCustFlavors] = useState<FlavorOption[]>([]);
   const [custToppings, setCustToppings] = useState<ToppingOption[]>([]);
   const [custQuantity, setCustQuantity] = useState<number>(1);
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (containers.length > 0) {
-      setCustContainer(containers[0]);
+    if (containers.length > 0 && custContainer) {
+      const updated = containers.find(c => c.id === custContainer.id);
+      if (updated) {
+        setCustContainer(updated);
+      }
     }
   }, [containers]);
 
@@ -661,7 +671,7 @@ export default function App() {
       customerName: customerName.trim() || undefined
     };
 
-    setDoc(doc(db, 'sales', newSale.id), newSale)
+    setDoc(doc(db, 'sales', newSale.id), cleanForFirestore(newSale))
       .then(() => {
         // Show thermal receipt modal
         setCompletedOrder(newSale);
@@ -714,7 +724,7 @@ export default function App() {
         changeAmount: 0,
         customerName: order.customerName
       };
-      await setDoc(doc(db, 'sales', saleId), newSale);
+      await setDoc(doc(db, 'sales', saleId), cleanForFirestore(newSale));
 
       triggerNotice(`تم تحضير الطلب ${order.orderNumber} لـ ${order.customerName} ودمجه بالمبيعات! 🔔🌟`, 'success');
     } catch (e) {
@@ -774,7 +784,11 @@ export default function App() {
     };
   }, [customerCart]);
 
-  const handleAddCustItemToCart = () => {
+   const handleAddCustItemToCart = () => {
+    if (!custContainer) {
+      triggerNotice('الرجاء اختيار نوع وعاء التقديم والتركيب أولاً لتخصيص كوبك! 🍨', 'error');
+      return;
+    }
     if (custFlavors.length === 0) {
       triggerNotice('الرجاء اختيار نكهة واحدة على الأقل لكوكبة الآيس كريم! 🍦', 'error');
       return;
@@ -797,6 +811,7 @@ export default function App() {
     setCustomerCart((prev) => [...prev, newItem]);
     
     // Clear customizer state for next item configuration
+    setCustContainer(null);
     setCustFlavors([]);
     setCustToppings([]);
     setCustQuantity(1);
@@ -846,14 +861,18 @@ export default function App() {
       total: customerTotals.finalTotal,
       status: 'pending',
       paymentMethod: custPaymentMethod,
-      bankSubMethod: custPaymentMethod === 'card' ? custBankSubMethod : undefined,
     };
 
+    if (custPaymentMethod === 'card') {
+      newOnlineOrder.bankSubMethod = custBankSubMethod;
+    }
+
     try {
-      await setDoc(doc(db, 'online_orders', orderId), newOnlineOrder);
+      await setDoc(doc(db, 'online_orders', orderId), cleanForFirestore(newOnlineOrder));
       localStorage.setItem('recent_online_order_id', orderId);
       setRecentOnlineOrderId(orderId);
       setCustomerCart([]);
+      setIsCartOpen(false);
       triggerNotice('تم إرسال طلبك السحابي للمطبخ بنجاح! 🚀 تمتع بمشاهدة حالة التحضير الحية.', 'success');
     } catch (e: any) {
       console.error('Customer Order Submit Error:', e);
@@ -869,17 +888,16 @@ export default function App() {
 
   const handleCancelRecentCustomerOrder = async () => {
     if (!recentOnlineOrderId) return;
-    if (window.confirm('هل أنت متأكد من رغبتك في إلغاء طلبك الحالي؟')) {
-      try {
-        await setDoc(doc(db, 'online_orders', recentOnlineOrderId), { status: 'cancelled' }, { merge: true });
-        localStorage.removeItem('recent_online_order_id');
-        setRecentOnlineOrderId(null);
-        setActiveCustomerOrder(null);
-        triggerNotice('تم إلغاء طلبك بنجاح.', 'info');
-      } catch (e) {
-        console.error(e);
-        triggerNotice('خطأ أثناء إلغاء الطلب السحابي.', 'error');
-      }
+    try {
+      await setDoc(doc(db, 'online_orders', recentOnlineOrderId), { status: 'cancelled' }, { merge: true });
+      localStorage.removeItem('recent_online_order_id');
+      setRecentOnlineOrderId(null);
+      setActiveCustomerOrder(null);
+      setIsCancelConfirmOpen(false);
+      triggerNotice('تم إلغاء طلبك بنجاح.', 'info');
+    } catch (e) {
+      console.error(e);
+      triggerNotice('خطأ أثناء إلغاء الطلب السحابي.', 'error');
     }
   };
 
@@ -989,25 +1007,52 @@ export default function App() {
         </AnimatePresence>
 
         {/* --- APP HEADER --- */}
-        <header className="max-w-7xl mx-auto px-4 pt-6 pb-4">
-          <div className="bg-white rounded-3xl p-6 border-b-4 border-pink-200 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[8px_8px_0px_0px_rgba(236,72,153,0.06)]">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-pink-500 rounded-2xl flex items-center justify-center text-4xl font-black shadow-md shrink-0">
+        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b-2 border-pink-100/80 shadow-[0_2px_15px_-3px_rgba(236,72,153,0.08)] py-3 px-4 animate-fadeIn">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 relative">
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="w-11 h-11 bg-pink-500 rounded-2xl flex items-center justify-center text-2xl font-black shadow-sm shrink-0">
                 🍦
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-black text-pink-600 tracking-tight leading-none uppercase">سحر الآيس كريم</h1>
-                  <span className="bg-emerald-100 text-emerald-600 text-[11px] font-black px-2.5 py-0.5 rounded-full border border-emerald-200">الطلب الذاتي للعملاء</span>
+                  <h1 className="text-base sm:text-lg font-black text-pink-600 tracking-tight leading-none uppercase">سحر الآيس كريم</h1>
+                  <span className="bg-emerald-100 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-150">الطلب الذاتي</span>
                 </div>
-                <p className="text-pink-400 font-bold text-xs mt-1.5">ركب آيس كريم أحلامك بنفسك وأرسله فوراً لصناعه بالمطبخ! ✨</p>
+                <p className="text-pink-400 font-bold text-[10px] sm:text-xs mt-1 font-sans">ركب آيس كريم أحلامك وأرسله للمطبخ! ✨</p>
               </div>
             </div>
-            {/* Switch view logic removed to lock public/client screen */}
+
+            {/* Header Interactive Cart Button */}
+            {(!recentOnlineOrderId || !activeCustomerOrder || activeCustomerOrder.status === 'prepared' || activeCustomerOrder.status === 'cancelled') && (
+              <button
+                type="button"
+                id="cart-overlay-button"
+                onClick={() => setIsCartOpen(true)}
+                className="relative flex items-center gap-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 border-pink-707 cursor-pointer hover:bg-pink-600 hover:shadow-md transition active:scale-95 duration-200 shrink-0 self-center"
+              >
+                <div className="relative">
+                  <ShoppingBag className="w-4 h-4" />
+                  {customerCart.length > 0 && (
+                    <motion.div
+                      key={customerCart.reduce((sum, item) => sum + item.quantity, 0)}
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="absolute -top-2.5 -left-2.5 bg-yellow-400 text-slate-900 border border-white w-4.5 h-4.5 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm"
+                    >
+                      {customerCart.reduce((sum, item) => sum + item.quantity, 0)}
+                    </motion.div>
+                  )}
+                </div>
+                <div className="text-right flex flex-col leading-tight font-sans">
+                  <span className="text-[8px] font-extrabold text-pink-100">سلة طلباتي</span>
+                  <span className="text-[10px] font-black">{customerTotals.finalTotal.toFixed(2)} ر.س</span>
+                </div>
+              </button>
+            )}
           </div>
         </header>
 
-        <main className="max-w-7xl mx-auto px-4 mt-4">
+        <main className="max-w-7xl mx-auto px-4 mt-4 relative">
           {recentOnlineOrderId && activeCustomerOrder ? (
             /* --- SUBMITTED ORDER LIVE STATUS DIALOG --- */
             <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6">
@@ -1075,7 +1120,7 @@ export default function App() {
               </div>
 
               {/* Order contents breakdown */}
-              <div className="border-t border-dashed border-slate-200 pt-6 space-y-4 select-text">
+              <div className="border-t border-dashed border-slate-200 pt-6 space-y-4 select-text font-sans">
                 <span className="font-black text-sm text-slate-700 block text-right border-r-4 border-pink-500 pr-2">ملخص طلبك المصمم:</span>
                 <div className="space-y-3 font-sans">
                   {activeCustomerOrder.items.map((item, idx) => (
@@ -1096,12 +1141,12 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="pt-2 flex justify-between items-center text-sm font-black text-slate-800 font-sans">
+                <div className="pt-2 flex justify-between items-center text-sm font-black text-slate-800">
                   <span>المبلغ الإجمالي المطلق للدفع:</span>
                   <span className="text-lg font-mono text-pink-600">{activeCustomerOrder.total.toFixed(2)} ريال سعودي</span>
                 </div>
 
-                <div className="flex justify-between items-center text-xs font-bold text-slate-500 font-sans border-t border-dashed pt-3 mt-1">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-500 border-t border-dashed pt-3 mt-1">
                   <span>طريقة الدفع المرفقة:</span>
                   <span className="text-xs font-black text-slate-800">
                     {activeCustomerOrder.paymentMethod === 'card' ? (
@@ -1124,20 +1169,43 @@ export default function App() {
               </div>
 
               {/* Action trigger buttons */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-col gap-3 pt-4 border-t border-slate-100 mt-4">
                 {activeCustomerOrder.status === 'pending' && (
-                  <button
-                    onClick={handleCancelRecentCustomerOrder}
-                    className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 font-black text-xs py-3.5 rounded-xl border border-red-200 transition text-center cursor-pointer"
-                  >
-                    إلغاء الطلب بالكامل ❌
-                  </button>
+                  !isCancelConfirmOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsCancelConfirmOpen(true)}
+                      className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-black text-xs py-3.5 rounded-xl border border-red-200 transition text-center cursor-pointer"
+                    >
+                      إلغاء الطلب بالكامل ❌
+                    </button>
+                  ) : (
+                    <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 text-center space-y-3 animate-fadeIn">
+                      <p className="text-xs font-black text-red-700">⚠️ هل أنت متأكد من رغبتك في إلغاء طلبك الحالي نهائياً؟ لا يمكن التراجع عن هذا الإجراء!</p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCancelRecentCustomerOrder}
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black text-xs py-2.5 rounded-xl transition text-center cursor-pointer shadow-sm"
+                        >
+                          نعم، إلغاء الطلب ❌
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCancelConfirmOpen(false)}
+                          className="flex-1 bg-white hover:bg-slate-100 text-slate-700 border-2 border-slate-200 font-black text-xs py-2.5 rounded-xl transition text-center cursor-pointer"
+                        >
+                          تراجع وإبقاء الطلب 👍
+                        </button>
+                      </div>
+                    </div>
+                  )
                 )}
                 
                 {(activeCustomerOrder.status === 'prepared' || activeCustomerOrder.status === 'cancelled') && (
                   <button
                     onClick={handleStartNewCustomerOrder}
-                    className="flex-1 bg-pink-500 hover:bg-pink-600 text-white font-black text-xs py-3.5 rounded-xl border-b-4 border-pink-700 hover:border-pink-800 transition text-center shadow-lg cursor-pointer animate-pulse"
+                    className="w-full bg-pink-500 hover:bg-pink-600 text-white font-black text-xs py-3.5 rounded-xl border-b-4 border-pink-700 hover:border-pink-800 transition text-center shadow-lg cursor-pointer animate-pulse"
                   >
                     صمم آيس كريم جديد الآن! 🍦🚀
                   </button>
@@ -1145,380 +1213,408 @@ export default function App() {
               </div>
 
             </div>
-          ) : (
-            /* --- CLIENT ICE CREAM CUSTOMIZATION BUILDER INTERFACE --- */
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          ) : isCartOpen ? (
+            /* --- CLIENT INLINE SHOPPING CART --- */
+            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
               
-              {/* BUILDER STAGES AND SELECTIONS (lg:col-span-8) */}
-              <div className="lg:col-span-8 space-y-6">
-                
-                {/* PERSONAL NAME DETAILS INPUT */}
-                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                  <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-r-4 border-pink-500 pr-3">
-                    <span>👑 معلومات الاستلام وطريقة الدفع</span>
-                  </h2>
-                  <div className="flex flex-col gap-2 font-sans text-xs">
-                    <label className="text-[11px] text-slate-400 font-extrabold" htmlFor="self-customer-name">اسمك الكريم (لنناديك به عند طابور الاستلام وصناعة الكوب!):</label>
-                    <motion.input
-                      type="text"
-                      id="self-customer-name"
-                      placeholder="اكتب اسمك الكريم هنا للبدء..."
-                      value={selfCustomerName}
-                      onChange={(e) => setSelfCustomerName(e.target.value)}
-                      animate={{
-                        borderColor: ['#f1f5f9', '#ec4899', '#3b82f6', '#f1f5f9'],
-                        boxShadow: [
-                          '0 0 0 0px rgba(236, 72, 153, 0)',
-                          '0 0 0 8px rgba(236, 72, 153, 0.3)',
-                          '0 0 0 8px rgba(59, 130, 246, 0.3)',
-                          '0 0 0 0px rgba(236, 72, 153, 0)'
-                        ],
-                        scale: [1, 1.015, 1.015, 1]
-                      }}
-                      whileFocus={{
-                        scale: 1.02,
-                        borderColor: '#ec4899',
-                        boxShadow: '0 0 0 10px rgba(236, 72, 153, 0.4)'
-                      }}
-                      transition={{
-                        duration: 3,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                      }}
-                      className="w-full bg-white border-4 rounded-2xl px-5 py-3.5 text-sm font-black text-slate-800 placeholder:text-slate-300 focus:outline-none focus:bg-white"
-                    />
+              {/* Back to designing bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.06)] gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">🛒</span>
+                  <div className="text-right font-sans">
+                    <h2 className="text-base font-black text-slate-800">سلة طلباتي المصممة</h2>
+                    <p className="text-[10px] text-slate-400 font-bold">يرجى مراجعة تفاصيل الكوب وتجهيز معلومات الاستلام وإرساله للبائع</p>
                   </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCartOpen(false)}
+                  className="w-full sm:w-auto px-5 py-3 text-white font-black rounded-2xl text-xs transition border-b-4 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 duration-150"
+                  style={{ backgroundColor: '#ec4899', borderColor: '#be185d' }}
+                >
+                  <span>🍦 العودة لتصميم الأكواب</span>
+                </button>
+              </div>
 
-                  {/* CUSTOMER PAYMENT METHOD */}
-                  <div className="space-y-3 pt-4 border-t border-dashed border-slate-205">
-                    <div>
-                      <span className="text-[11px] font-black text-slate-400 block mb-2 mr-1">اختر طريقة السداد المفضلة لديك:</span>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setCustPaymentMethod('cash')}
-                          className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
-                            custPaymentMethod === 'cash'
-                              ? 'bg-pink-500 border-pink-600 text-white shadow-md'
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
-                          }`}
-                        >
-                          <Coins className="w-4 h-4" />
-                          <span>نقدي / كاش</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCustPaymentMethod('card')}
-                          className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
-                            custPaymentMethod === 'card'
-                              ? 'bg-pink-500 border-pink-700 text-white shadow-md'
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
-                          }`}
-                        >
-                          <span>🏦</span>
-                          <span>تحويل بنكي</span>
-                        </button>
-                      </div>
+              {/* Grid content for Cart Items & Details */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                {/* Right/Main Column: Items List */}
+                <div className="lg:col-span-7 bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                  <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5">١. الأكواب المصممة في سلتك</h3>
+                  
+                  {customerCart.length === 0 ? (
+                    <div className="text-center py-12 px-4 text-slate-400 space-y-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
+                      <span className="text-6xl block animate-bounce">🍨</span>
+                      <h4 className="text-xs font-black">سلتك خاوية من السحر والمذاق!</h4>
+                      <p className="text-[10px] font-bold max-w-sm mx-auto leading-relaxed">قم بتكوين آيس كريم مخصّص، ثم أضفه للسلة ليكتمل طلبك ويصل للمطبخ.</p>
+                      <button
+                        type="button"
+                        onClick={() => setIsCartOpen(false)}
+                        className="mt-2 inline-flex items-center gap-1.5 bg-pink-500 hover:bg-pink-600 text-white font-black text-xs px-5 py-3 rounded-xl transition cursor-pointer shadow-md border-b-2 border-pink-700"
+                      >
+                        ابدأ تصميم آيس كريم جديد 🍧
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {customerCart.map((item, index) => (
+                        <div key={index} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden flex flex-col justify-between">
+                          <button
+                            onClick={() => handleRemoveCustItemFromCart(index)}
+                            className="absolute top-2.5 left-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-black w-7 h-7 rounded-xl transition flex items-center justify-center cursor-pointer border border-red-200 shadow-sm"
+                            title="حذف هذا الصنف"
+                          >
+                            ✕
+                          </button>
+                          
+                          <div className="text-right pl-8">
+                            <span className="text-xs font-black text-slate-800 block">{item.container.name}</span>
+                            <div className="text-[10px] text-slate-500 font-bold mt-1.5 leading-relaxed">
+                              النكهات: {item.flavors.map(f => f.name).join('، ')}
+                            </div>
+                            {item.toppings.length > 0 && (
+                              <div className="text-[10px] text-emerald-600 font-black mt-1 leading-relaxed">
+                                إضافات: {item.toppings.map(t3 => t3.name).join(' + ')}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between border-t border-dashed pt-3 mt-1.5 font-sans">
+                            {/* Quantity Modifications */}
+                            <div className="flex items-center bg-white rounded-xl overflow-hidden border-2 border-slate-200 shadow-sm h-8">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCustItemQty(index, item.quantity - 1)}
+                                className="w-8 h-full hover:bg-slate-50 text-xs font-extrabold transition text-slate-600"
+                              >
+                                -
+                              </button>
+                              <span className="px-3 font-mono text-xs font-black text-slate-800 bg-slate-50/55 h-full flex items-center justify-center border-x border-slate-200 min-w-8">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateCustItemQty(index, item.quantity + 1)}
+                                className="w-8 h-full hover:bg-slate-50 text-xs font-extrabold transition text-slate-600"
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <span className="font-mono text-xs font-black text-slate-800">{item.itemTotal.toFixed(2)} ر.س</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Left Column: Shipment Contact Details & Pricing Summary */}
+                <div className="lg:col-span-12 xl:col-span-5 space-y-6">
+                  
+                  {/* Customer Information/Pickup Panel */}
+                  <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right">
+                    <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5 font-sans">٢. معلومات الاستلام والدفع</h3>
+                    
+                    {/* Buyer/Customer Name */}
+                    <div className="flex flex-col gap-1.5 font-sans text-xs">
+                      <label className="text-[10px] text-slate-400 font-extrabold leading-relaxed" htmlFor="self-customer-name-inline">اسمك الكريم لتسمعه عند مناداة كوبك: *</label>
+                      <input
+                        type="text"
+                        id="self-customer-name-inline"
+                        placeholder="اكتب اسم العميل الكريم هنا..."
+                        value={selfCustomerName}
+                        onChange={(e) => setSelfCustomerName(e.target.value)}
+                        className="w-full bg-white border-2 border-slate-300 hover:border-pink-300 focus:border-pink-500 focus:outline-none rounded-2xl px-4 py-3 text-xs font-black text-slate-805 placeholder:text-slate-300 shadow-sm transition"
+                      />
                     </div>
 
-                    {/* Customer Bank Transfer Sub-options */}
-                    {custPaymentMethod === 'card' && (
-                      <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3.5 space-y-2.5 font-sans">
-                        <span className="text-[10px] font-black text-slate-500 block mr-1">بوابة التحويل المفضلة:</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { id: 'stc', name: 'STC Pay', icon: '📱' },
-                            { id: 'barq', name: 'barq', icon: '⚡' },
-                            { id: 'urpay', name: 'urpay', icon: '💳' },
-                            { id: 'other', name: 'بنك آخر', icon: '🏦' }
-                          ].map(sub => {
-                            const isSel = custBankSubMethod === sub.id;
-                            return (
-                              <button
-                                key={sub.id}
-                                type="button"
-                                onClick={() => setCustBankSubMethod(sub.id)}
-                                className={`py-2 px-3 text-[11px] font-black rounded-xl border-2 transition cursor-pointer flex items-center justify-between gap-1.5 ${
-                                  isSel
-                                    ? 'bg-pink-500 border-pink-600 text-white shadow-sm'
-                                    : 'bg-white border-slate-200 hover:border-pink-300 text-slate-700'
-                                }`}
-                              >
-                                <span className="truncate">{sub.name}</span>
-                                <span className="text-sm">{sub.icon}</span>
-                              </button>
-                            );
-                          })}
+                    {/* Customer Payment Options */}
+                    <div className="space-y-3 pt-3 border-t border-dashed border-slate-150">
+                      <div>
+                        <span className="text-[10px] font-black text-slate-400 block mb-2 mr-1">اختر طريقة السداد المفضلة لديك:</span>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setCustPaymentMethod('cash')}
+                            className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
+                              custPaymentMethod === 'cash'
+                                ? 'bg-pink-500 border-pink-600 text-white shadow-md'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
+                            }`}
+                          >
+                            <Coins className="w-4 h-4" />
+                            <span>نقدي / كاش</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCustPaymentMethod('card')}
+                            className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
+                              custPaymentMethod === 'card'
+                                ? 'bg-pink-500 border-pink-700 text-white shadow-md'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
+                            }`}
+                          >
+                            <span>🏦</span>
+                            <span>تحويل بنكي</span>
+                          </button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* STEP 1: CHOOSE CUP OR CONE */}
-                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                  <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-r-4 border-pink-500 pr-3">
-                    <span>1. نوع وعاء التقديم والتركيب</span>
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {containers.map(opt => {
-                      const isSelected = custContainer.id === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          onClick={() => setCustContainer(opt)}
-                          className={`text-center p-6 rounded-3xl border-4 transition-all relative overflow-hidden flex flex-col items-center justify-center gap-2.5 cursor-pointer ${
-                            isSelected
-                              ? 'bg-pink-50/20 border-pink-500 shadow-[8px_8px_0px_0px_rgba(236,72,153,0.1)]'
-                              : 'bg-white border-slate-200 opacity-80 hover:opacity-100'
-                          }`}
-                        >
-                          <span className="text-5xl">{opt.id === 'cone' ? '🍦' : '🍨'}</span>
-                          <div>
-                            <span className="text-base font-black text-slate-800 block">{opt.name}</span>
-                            <span className="text-[10px] text-slate-400 font-bold block mt-1 leading-relaxed">{opt.description}</span>
+                      {/* Customer Bank Transfer Sub-options */}
+                      {custPaymentMethod === 'card' && (
+                        <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3.5 space-y-2.5 font-sans">
+                          <span className="text-[10px] font-black text-slate-500 block mr-1">بوابة التحويل المفضلة:</span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'stc', name: 'STC Pay', icon: '📱' },
+                              { id: 'barq', name: 'barq', icon: '⚡' },
+                              { id: 'urpay', name: 'urpay', icon: '💳' },
+                              { id: 'other', name: 'بنك آخر', icon: '🏦' }
+                            ].map(sub => {
+                              const isSel = custBankSubMethod === sub.id;
+                              return (
+                                <button
+                                  key={sub.id}
+                                  type="button"
+                                  onClick={() => setCustBankSubMethod(sub.id)}
+                                  className={`py-2 px-3 text-[11px] font-black rounded-xl border-2 transition cursor-pointer flex items-center justify-between gap-1 ${
+                                    isSel
+                                      ? 'bg-pink-500 border-pink-600 text-white shadow-sm'
+                                      : 'bg-white border-slate-200 hover:border-pink-300 text-slate-700'
+                                  }`}
+                                >
+                                  <span className="truncate">{sub.name}</span>
+                                  <span className="text-sm">{sub.icon}</span>
+                                </button>
+                              );
+                            })}
                           </div>
-                          <span className={`px-4 py-1.5 rounded-full font-black text-xs border-2 ${
-                            isSelected ? 'bg-pink-500 border-pink-600 text-white shadow-sm' : 'bg-pink-50 border-pink-100 text-pink-600'
-                          }`}>
-                            {opt.price.toFixed(2)} ر.س
-                          </span>
-                        </button>
-                      );
-                    })}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* STEP 2: SCOOPS FLAVORS (1-3 SCOOPS) */}
-                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                  <div className="flex justify-between items-center border-r-4 border-pink-500 pr-3 gap-2">
-                    <h2 className="text-lg font-black text-slate-800">
-                      <span>2. كرات نكهات الآيس كريم</span>
-                    </h2>
-                    <span className="text-[10px] bg-pink-100 text-pink-650 py-1 px-2.5 rounded-full font-black whitespace-nowrap shrink-0">طعم من اختيارك (بحد أقصى ٣ كرات)</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {flavors.map(opt => {
-                      const countSelected = custFlavors.filter(f => f.id === opt.id).length;
-                      return (
-                        <button
-                          key={opt.id}
-                          onClick={() => {
-                            const currentTotalCount = custFlavors.length;
-                            if (countSelected > 0) {
-                              const indexIdx = custFlavors.findIndex(f => f.id === opt.id);
-                              setCustFlavors(prev => prev.filter((_, i) => i !== indexIdx));
-                            } else {
-                              if (currentTotalCount >= 3) {
-                                triggerNotice('الحد الأقصى المسموح به هو ٣ كرات آيس كريم للقرص الواحد!', 'error');
-                                return;
-                              }
-                              setCustFlavors(prev => [...prev, opt]);
-                            }
-                          }}
-                          className={`p-4 rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 cursor-pointer ${
-                            countSelected > 0
-                              ? 'bg-pink-500 text-white border-pink-600 shadow-md scale-[1.02]'
-                              : 'bg-slate-50 border-slate-200 hover:border-pink-300 hover:bg-slate-100/50 text-slate-700'
-                          }`}
-                        >
-                          <span className="text-3xl">{opt.emoji}</span>
-                          <div className="text-center font-sans text-xs">
-                            <span className="font-black block truncate">{opt.name}</span>
-                            {opt.price > 0 && <span className="text-[9px] font-bold block mt-0.5 opacity-80 font-mono">+{opt.price.toFixed(2)} ر.س</span>}
+                  {/* Calculations breakdown block & Submit */}
+                  <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right">
+                    <h3 className="text-xs font-black text-slate-800 border-r-4 border-slate-400 pr-2 pb-0.5">٣. ملخص الحساب الكلي</h3>
+                    
+                    <div className="space-y-2.5 font-sans text-xs">
+                      <div className="flex justify-between text-slate-500 font-bold">
+                        <span>المجموع الفرعي للأكواب:</span>
+                        <span className="font-mono">{customerTotals.subtotal.toFixed(2)} ر.س</span>
+                      </div>
+                      {customerTotals.toppingsSubtotal > 0 && (
+                        <div className="flex justify-between text-slate-500 font-bold">
+                          <span>ملحقات الإضافات الفخمة:</span>
+                          <span className="font-mono">+{customerTotals.toppingsSubtotal.toFixed(2)} ر.س</span>
+                        </div>
+                      )}
+                      {customerTotals.autoDiscountPercent > 0 && (
+                        <div className="bg-emerald-50 text-emerald-700 py-2.5 px-3 rounded-xl border border-emerald-100 flex flex-col gap-1 text-[11px]">
+                          <div className="flex justify-between font-black">
+                            <span>العرض التلقائي للخدمة الذاتية:</span>
+                            <span className="font-mono">-{customerTotals.autoDiscountPercent}%</span>
                           </div>
-                          {countSelected > 0 && (
-                            <span className="bg-white text-pink-600 text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black shadow-sm">
-                              {countSelected}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                          <span className="text-[10px] font-black leading-relaxed">{customerTotals.autoDiscountName}</span>
+                        </div>
+                      )}
 
-                {/* STEP 3: SELECT EXTENDED TOPPINGS */}
-                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                  <h2 className="text-lg font-black text-slate-800 flex items-center justify-between border-r-4 border-pink-500 pr-3">
-                    <span>3. إضافة حب الرغبة والزينة الحصرية وافل وصوص</span>
-                  </h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {toppings.map(opt => {
-                      const isSelected = custToppings.some(t => t.id === opt.id);
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => {
-                            if (isSelected) {
-                              setCustToppings(prev => prev.filter(t => t.id !== opt.id));
-                            } else {
-                              setCustToppings(prev => [...prev, opt]);
-                            }
-                          }}
-                          className={`p-3.5 rounded-2xl border-2 transition flex items-center gap-3 cursor-pointer text-right ${
-                            isSelected
-                              ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-[1.01]'
-                              : 'bg-slate-50 border-slate-200 hover:border-emerald-350 hover:bg-slate-100/50 text-slate-700'
-                          }`}
-                        >
-                          <span className="text-2xl shrink-0">{opt.emoji}</span>
-                          <div className="min-w-0 flex-1 font-sans text-xs">
-                            <span className="font-black block truncate">{opt.name}</span>
-                            <span className="text-[9px] font-bold block opacity-80 font-mono">{opt.price === 0 ? 'مجاناً ✨' : `+${opt.price.toFixed(2)} ر.س`}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* CONFIGURED CUSTOMIZER ACTIONS PANEL */}
-                <div className="bg-slate-900 text-white rounded-3xl p-6 border-4 border-slate-950 shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div>
-                    <h3 className="text-base font-black text-yellow-300">هل أكملت تصميم كوب آيس كريم أحلامك الفاخر؟</h3>
-                    <p className="text-[11px] text-slate-300 font-bold mt-1 max-w-md">أضف هذا المزيج الرائع لسلتك لتستطيع تعبئة طلبك وإرساله فوراً للمطبخ!</p>
-                  </div>
-
-                  <div className="flex items-center gap-4 w-full md:w-auto font-sans text-xs">
-                    {/* Quantity counter */}
-                    <div className="flex items-center bg-slate-850 rounded-xl overflow-hidden border border-slate-700 h-11 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setCustQuantity(q => Math.max(1, q - 1))}
-                        className="px-3 hover:bg-slate-800 font-black h-full transition w-8 text-center"
-                      >
-                        -
-                      </button>
-                      <span className="px-3 font-mono font-black text-xs text-yellow-300">{custQuantity} أكواب</span>
-                      <button
-                        type="button"
-                        onClick={() => setCustQuantity(q => q + 1)}
-                        className="px-3 hover:bg-slate-800 font-black h-full transition w-8 text-center"
-                      >
-                        +
-                      </button>
+                      <div className="flex justify-between items-center text-sm font-black text-slate-850 pt-3 border-t-2 border-dashed border-slate-200">
+                        <span>قيمة الدفع الإجمالية:</span>
+                        <span className="text-lg font-mono text-pink-600">{customerTotals.finalTotal.toFixed(2)} ريال</span>
+                      </div>
                     </div>
 
+                    {/* Submit order button */}
                     <button
-                      onClick={handleAddCustItemToCart}
-                      className="flex-1 md:flex-initial bg-pink-500 hover:bg-pink-650 text-white font-black text-xs h-11 px-6 rounded-xl transition flex items-center justify-center gap-1.5 border-b-2 border-pink-700 cursor-pointer shadow-md shadow-pink-500/10"
+                      type="button"
+                      disabled={customerCart.length === 0}
+                      onClick={handleSubmitCustomerOrder}
+                      className={`w-full font-black py-4 rounded-2xl border-b-4 transition flex items-center justify-center gap-2 cursor-pointer shadow-lg text-xs leading-none uppercase ${
+                        customerCart.length === 0
+                          ? 'bg-slate-200 text-slate-450 border-slate-350 cursor-not-allowed'
+                          : 'bg-pink-500 hover:bg-pink-600 text-white border-pink-700 hover:border-pink-800 active:scale-[0.99] duration-100'
+                      }`}
+                      style={{ backgroundColor: customerCart.length === 0 ? '#cbd5e1' : '#ec4899', borderColor: customerCart.length === 0 ? '#94a3b8' : '#be185d' }}
                     >
-                      <span>➕</span>
-                      <span>إضافة هذا الآيس كالسلة</span>
+                      <span>🚀</span>
+                      <span>إرسال وتحضير الطلب سحابياً</span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setIsCartOpen(false)}
+                      className="w-full py-2.5 bg-slate-50 hover:bg-slate-150 border-2 border-slate-200 text-slate-650 hover:text-slate-800 transition rounded-xl text-[11px] font-black text-center block cursor-pointer"
+                    >
+                      العودة لتعديل وتصميم الأكواب 🍧
                     </button>
                   </div>
+
                 </div>
 
               </div>
 
-              {/* CLIENT BASKET / CART LIST AND CONFIRMATION (lg:col-span-4) */}
-              <div className="lg:col-span-4 space-y-6">
-                
-                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                  <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-r-4 border-pink-500 pr-3">
-                    <span>🛒 سلة طلباتي المصممة</span>
-                  </h2>
-
-                  {customerCart.length === 0 ? (
-                    <div className="text-center py-12 px-2 text-slate-400 space-y-3">
-                      <span className="text-5xl block animate-bounce">🍨</span>
-                      <h4 className="text-xs font-black">سلتك خاوية من السحر والمذاق!</h4>
-                      <p className="text-[10px] font-bold max-w-xs mx-auto">قم بتركيب المكونات في المخصّص المقابل، ثم انقر على زر "إضافة هذا الآيس كالسلة" لتكمل الخطوات.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 select-text">
-                        {customerCart.map((item, index) => (
-                          <div key={index} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden">
-                            <button
-                              onClick={() => handleRemoveCustItemFromCart(index)}
-                              className="absolute top-2.5 left-2.5 bg-red-50 hover:bg-red-100 text-red-650 text-[10px] font-black w-6 h-6 rounded-lg transition flex items-center justify-center cursor-pointer border border-red-200"
-                              title="حذف هذا الصنف"
-                            >
-                              ✕
-                            </button>
-                            
-                            <div className="text-right">
-                              <span className="text-xs font-black text-slate-800 block">{item.container.name}</span>
-                              <div className="text-[10px] text-slate-500 font-bold mt-1">
-                                النكهات: {item.flavors.map(f => f.name).join('، ')}
-                              </div>
-                              {item.toppings.length > 0 && (
-                                <div className="text-[10px] text-emerald-600 font-black mt-0.5">
-                                  إضافات: {item.toppings.map(t3 => t3.name).join(' + ')}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex items-center justify-between border-t border-dashed pt-2.5 mt-0.5 font-sans">
-                              {/* Quantity Modifications */}
-                              <div className="flex items-center bg-white rounded-lg overflow-hidden border">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateCustItemQty(index, item.quantity - 1)}
-                                  className="w-6 h-6 hover:bg-slate-50 text-xs font-bold"
-                                >
-                                  -
-                                </button>
-                                <span className="px-2 font-mono text-xs font-extrabold">{item.quantity}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateCustItemQty(index, item.quantity + 1)}
-                                  className="w-6 h-6 hover:bg-slate-50 text-xs font-bold"
-                                >
-                                  +
-                                </button>
-                              </div>
-
-                              <span className="font-mono text-xs font-black text-slate-700">{item.itemTotal.toFixed(2)} ر.س</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Financial breakdown */}
-                      <div className="border-t border-dashed pt-4 border-slate-200 space-y-2 select-text font-sans text-xs">
-                        <div className="flex justify-between text-slate-500 font-bold pb-1">
-                          <span>المجموع الفرعي للأكواب:</span>
-                          <span className="font-mono">{customerTotals.subtotal.toFixed(2)} ر.س</span>
-                        </div>
-                        {customerTotals.toppingsSubtotal > 0 && (
-                          <div className="flex justify-between text-slate-500 font-bold pb-1">
-                            <span>ملحقات الإضافات الفخمة:</span>
-                            <span className="font-mono">+{customerTotals.toppingsSubtotal.toFixed(2)} ر.س</span>
-                          </div>
-                        )}
-                        {customerTotals.autoDiscountPercent > 0 && (
-                          <div className="bg-emerald-50 text-emerald-700 py-2.5 px-3 rounded-xl border border-emerald-100 flex flex-col gap-1 text-[11px]">
-                            <div className="flex justify-between font-black">
-                              <span>العرض التلقائي للخدمة الذاتية:</span>
-                              <span className="font-mono">-{customerTotals.autoDiscountPercent}%</span>
-                            </div>
-                            <span className="text-[10px] font-black leading-relaxed">{customerTotals.autoDiscountName}</span>
-                          </div>
-                        )}
-
-                        <div className="flex justify-between items-center text-sm font-black text-slate-850 pt-2 border-t">
-                          <span>قيمة الدفع الإجمالية:</span>
-                          <span className="text-lg font-mono text-pink-600">{customerTotals.finalTotal.toFixed(2)} ريال</span>
-                        </div>
-                      </div>
-
-                      {/* Confirm Order Trigger */}
+            </div>
+          ) : (
+            /* --- CLIENT ICE CREAM CUSTOMIZATION BUILDER INTERFACE --- */
+            <div className="max-w-3xl mx-auto space-y-6">
+              
+              {/* STEP 1: CHOOSE CUP OR CONE */}
+              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-r-4 border-pink-500 pr-3">
+                  <span>1. نوع وعاء التقديم والتركيب</span>
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {containers.map(opt => {
+                    const isSelected = custContainer?.id === opt.id;
+                    return (
                       <button
-                        onClick={handleSubmitCustomerOrder}
-                        className="w-full bg-pink-500 hover:bg-pink-600 text-white font-black py-4 rounded-2xl border-b-4 border-pink-700 hover:border-pink-800 transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-pink-500/10 text-sm"
+                        key={opt.id}
+                        onClick={() => setCustContainer(opt)}
+                        className={`text-center p-6 rounded-3xl border-4 transition-all relative overflow-hidden flex flex-col items-center justify-center gap-2.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-pink-50/20 border-pink-500 shadow-[8px_8px_0px_0px_rgba(236,72,153,0.1)]'
+                            : 'bg-white border-slate-200 opacity-80 hover:opacity-100'
+                        }`}
                       >
-                        🚀 إرسال وتحضير الطلب سحابياً
+                        <span className="text-5xl">{opt.id === 'cone' ? '🍦' : '🍨'}</span>
+                        <div>
+                          <span className="text-base font-black text-slate-800 block">{opt.name}</span>
+                          <span className="text-[10px] text-slate-400 font-bold block mt-1 leading-relaxed">{opt.description}</span>
+                        </div>
+                        <span className={`px-4 py-1.5 rounded-full font-black text-xs border-2 ${
+                          isSelected ? 'bg-pink-505 border-pink-600 text-white shadow-sm' : 'bg-pink-50 border-pink-100 text-pink-600'
+                        }`} style={{ borderColor: isSelected ? '#ec4899' : '#fbcfe8', backgroundColor: isSelected ? '#ec4899' : '#fdf2f8' }}>
+                          {opt.price.toFixed(2)} ر.س
+                        </span>
                       </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                    </div>
-                  )}
+              {/* STEP 2: SCOOPS FLAVORS (1-3 SCOOPS) */}
+              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                <div className="flex justify-between items-center border-r-4 border-pink-500 pr-3 gap-2">
+                  <h2 className="text-lg font-black text-slate-805">
+                    <span>2. كرات نكهات الآيس كريم</span>
+                  </h2>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {flavors.map(opt => {
+                    const countSelected = custFlavors.filter(f => f.id === opt.id).length;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          const currentTotalCount = custFlavors.length;
+                          if (countSelected > 0) {
+                            const indexIdx = custFlavors.findIndex(f => f.id === opt.id);
+                            setCustFlavors(prev => prev.filter((_, i) => i !== indexIdx));
+                          } else {
+                            if (currentTotalCount >= 3) {
+                              triggerNotice('الحد الأقصى المسموح به هو ٣ كرات آيس كريم للقرص الواحد!', 'error');
+                              return;
+                            }
+                            setCustFlavors(prev => [...prev, opt]);
+                          }
+                        }}
+                        className={`p-4 rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 cursor-pointer ${
+                          countSelected > 0
+                            ? 'bg-pink-500 text-white border-pink-600 shadow-md scale-[1.02]'
+                            : 'bg-slate-50 border-slate-200 hover:border-pink-300 hover:bg-slate-100/50 text-slate-700'
+                        }`}
+                      >
+                        <span className="text-3xl">{opt.emoji}</span>
+                        <div className="text-center font-sans text-xs">
+                          <span className="font-black block truncate">{opt.name}</span>
+                          {opt.price > 0 && <span className="text-[9px] font-bold block mt-0.5 opacity-80 font-mono">+{opt.price.toFixed(2)} ر.س</span>}
+                        </div>
+                        {countSelected > 0 && (
+                          <span className="bg-white text-pink-600 text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black shadow-sm">
+                            {countSelected}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
+              {/* STEP 3: SELECT EXTENDED TOPPINGS */}
+              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                <h2 className="text-lg font-black text-slate-800 flex items-center justify-between border-r-4 border-pink-500 pr-3">
+                  <span>3. إضافة حب الرغبة والزينة الحصرية وافل وصوص</span>
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {toppings.map(opt => {
+                    const isSelected = custToppings.some(t => t.id === opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setCustToppings(prev => prev.filter(t => t.id !== opt.id));
+                          } else {
+                            setCustToppings(prev => [...prev, opt]);
+                          }
+                        }}
+                        className={`p-3.5 rounded-2xl border-2 transition flex items-center gap-3 cursor-pointer text-right w-full ${
+                          isSelected
+                            ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-[1.01]'
+                            : 'bg-slate-50 border-slate-200 hover:border-emerald-300 hover:bg-slate-100/50 text-slate-700'
+                        }`}
+                      >
+                        <span className="text-2xl shrink-0">{opt.emoji}</span>
+                        <div className="min-w-0 flex-1 font-sans text-xs">
+                          <span className="font-black block truncate">{opt.name}</span>
+                          <span className="text-[9px] font-bold block opacity-80 font-mono">{opt.price === 0 ? 'مجاناً ✨' : `+${opt.price.toFixed(2)} ر.س`}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* CONFIGURED CUSTOMIZER ACTIONS PANEL */}
+              <div className="bg-gradient-to-r from-pink-50 to-amber-50/60 rounded-3xl p-5 border-2 border-pink-100/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-800">هل أكملت تصميم كوب آيس كريم أحلامك الفاخر؟</h3>
+                  <p className="text-[11px] text-slate-500 font-bold mt-1 max-w-md">أضف هذا المزيج الرائع لسلتك لتستطيع تعبئة طلبك وإرساله فوراً للمطبخ!</p>
                 </div>
 
+                <div className="flex items-center gap-4 w-full md:w-auto font-sans text-xs">
+                  {/* Quantity counter */}
+                  <div className="flex items-center bg-white rounded-xl overflow-hidden border border-slate-200 h-10 shrink-0 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setCustQuantity(q => Math.max(1, q - 1))}
+                      className="px-2.5 hover:bg-slate-50 text-slate-600 font-black h-full transition w-8 text-center cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="px-1 font-mono font-black text-xs text-pink-600">{custQuantity} أكواب</span>
+                    <button
+                      type="button"
+                      onClick={() => setCustQuantity(q => q + 1)}
+                      className="px-2.5 hover:bg-slate-50 text-slate-600 font-black h-full transition w-8 text-center cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleAddCustItemToCart}
+                    className="flex-1 md:flex-initial bg-pink-500 hover:bg-pink-600 active:scale-95 text-white font-black text-xs h-10 px-5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-[0_2px_8px_rgba(236,72,153,0.15)] hover:shadow-[0_4px_12px_rgba(236,72,153,0.3)] duration-200"
+                  >
+                    <span>➕</span>
+                    <span>إضافة هذا الآيس كريم للسلة</span>
+                  </button>
+                </div>
               </div>
 
             </div>
