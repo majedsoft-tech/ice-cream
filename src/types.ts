@@ -62,6 +62,7 @@ export interface SaleRecord {
   changeAmount?: number;
   bankSubMethod?: string;
   customerName?: string;
+  isOnline?: boolean;
 }
 
 export interface OnlineOrder {

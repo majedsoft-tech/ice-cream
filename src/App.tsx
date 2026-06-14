@@ -38,7 +38,7 @@ const cleanForFirestore = <T,>(obj: T): T => {
 
 export default function App() {
   // --- STATE ---
-  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices'>('OnlineOrders');
+  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices'>('History');
 
   const [containers, setContainers] = useState<ContainerOption[]>(() => {
     const saved = localStorage.getItem('ice_cream_containers');
@@ -245,6 +245,7 @@ export default function App() {
   const [ledgerSearch, setLedgerSearch] = useState<string>('');
   const [ledgerPaymentMethodFilter, setLedgerPaymentMethodFilter] = useState<string>('all');
   const [ledgerContainerFilter, setLedgerContainerFilter] = useState<string>('all');
+  const [ledgerSourceFilter, setLedgerSourceFilter] = useState<'all' | 'pos' | 'online'>('all');
 
   const filteredSalesHistory = salesHistory.filter(sale => {
     // 1. Search Query filter (matches order number, customer name, flavors, container, toppins, etc)
@@ -274,7 +275,18 @@ export default function App() {
     // 3. Container filter
     const matchesContainer = ledgerContainerFilter === 'all' || sale.items.some(item => item.container.id === ledgerContainerFilter);
 
-    return matchesSearch && matchesPayment && matchesContainer;
+    // 4. Source Filter (Kashier / Self-Service Online)
+    let matchesSource = true;
+    if (ledgerSourceFilter !== 'all') {
+      const isSaleOnline = sale.isOnline || sale.calculatedDiscountName?.includes('أونلاين');
+      if (ledgerSourceFilter === 'online') {
+        matchesSource = !!isSaleOnline;
+      } else if (ledgerSourceFilter === 'pos') {
+        matchesSource = !isSaleOnline;
+      }
+    }
+
+    return matchesSearch && matchesPayment && matchesContainer && matchesSource;
   });
 
   // Generate WhatsApp message URL
@@ -730,7 +742,8 @@ export default function App() {
         bankSubMethod: order.paymentMethod === 'card' ? (order.bankSubMethod || 'stc') : undefined,
         receivedAmount: order.total,
         changeAmount: 0,
-        customerName: order.customerName
+        customerName: order.customerName,
+        isOnline: true
       };
       await setDoc(doc(db, 'sales', saleId), cleanForFirestore(newSale));
 
@@ -925,10 +938,22 @@ export default function App() {
     let cupCount = 0;
     let coneCount = 0;
     let totalDiscountsGiven = 0;
+    let onlineOrdersCount = 0;
+    let onlineRevenue = 0;
+    let posOrdersCount = 0;
 
     salesHistory.forEach(sale => {
       totalRevenue += sale.total;
       totalDiscountsGiven += sale.discountAmount;
+
+      const isSaleOnline = sale.isOnline || sale.calculatedDiscountName?.includes('أونلاين');
+      if (isSaleOnline) {
+        onlineOrdersCount += 1;
+        onlineRevenue += sale.total;
+      } else {
+        posOrdersCount += 1;
+      }
+
       sale.items.forEach(item => {
         itemsSold += item.quantity;
         if (item.container.id === 'cup') cupCount += item.quantity;
@@ -942,7 +967,10 @@ export default function App() {
       cupCount,
       coneCount,
       totalDiscountsGiven,
-      ordersCount: salesHistory.length
+      ordersCount: salesHistory.length,
+      onlineOrdersCount,
+      onlineRevenue,
+      posOrdersCount
     };
   }, [salesHistory]);
 
@@ -1734,84 +1762,89 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl w-full sm:w-auto shrink-0 font-sans">
-              <button
-                onClick={() => setActiveTab('POS')}
-                className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  activeTab === 'POS'
-                    ? 'bg-pink-500 text-white shadow-[4px_4px_0px_0px_rgba(30,41,59,0.1)] border-2 border-pink-600'
-                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
-                }`}
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>شاشة الـ POS</span>
-                {cart.length > 0 && (
-                  <span className="bg-white text-pink-600 text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                  </span>
-                )}
-              </button>
-
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto shrink-0 font-sans flex-wrap sm:flex-nowrap">
+              {/* 1. طلبات الأونلاين (First) */}
               <button
                 onClick={() => setActiveTab('OnlineOrders')}
-                className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer relative ${
+                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
                   activeTab === 'OnlineOrders'
-                    ? 'bg-emerald-555 bg-emerald-500 text-white shadow-[4px_4px_0px_0px_rgba(30,41,59,0.1)] border-2 border-emerald-600'
+                    ? 'bg-emerald-500 text-white shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-emerald-600'
                     : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                 }`}
               >
-                <Sparkles className={`w-4 h-4 ${pendingCount > 0 ? 'animate-bounce text-yellow-300' : ''}`} />
+                <Sparkles className={`w-3.5 h-3.5 ${pendingCount > 0 ? 'animate-bounce text-yellow-300' : ''}`} />
                 <span>طلبات الأونلاين</span>
                 {pendingCount > 0 ? (
-                  <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full flex items-center justify-center font-black animate-pulse">
+                  <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-md flex items-center justify-center font-black animate-pulse">
                     {pendingCount} جديد
                   </span>
                 ) : onlineOrders.length > 0 ? (
-                  <span className="bg-slate-200 text-slate-700 text-[10px] px-1.5 py-0.5 rounded-full font-black">
+                  <span className="bg-slate-200 text-slate-700 text-[9px] px-1 py-0.5 rounded-md font-black">
                     {onlineOrders.length}
                   </span>
                 ) : null}
               </button>
 
-              <button
-                onClick={() => setActiveTab('OnlineSetup')}
-                className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer relative ${
-                  activeTab === 'OnlineSetup'
-                    ? 'bg-teal-600 text-white shadow-[4px_4px_0px_0px_rgba(30,41,59,0.1)] border-2 border-teal-700'
-                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
-                }`}
-              >
-                <Link className="w-4 h-4" />
-                <span>إعداد الطلب الذاتي 🌐</span>
-              </button>
-
+              {/* 2. أرشيف المبيعات (Second) */}
               <button
                 onClick={() => setActiveTab('History')}
-                className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   activeTab === 'History'
-                    ? 'bg-slate-800 text-white shadow-[4px_4px_0px_0px_rgba(30,41,59,0.1)] border-2 border-slate-900'
+                    ? 'bg-slate-800 text-white shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-slate-900'
                     : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                 }`}
               >
-                <History className="w-4 h-4" />
+                <History className="w-3.5 h-3.5" />
                 <span>أرشيف المبيعات</span>
                 {salesHistory.length > 0 && (
-                  <span className="bg-slate-700 text-white text-[10px] px-2 py-0.5 rounded-full font-black font-sans">
+                  <span className="bg-slate-700 text-white text-[9px] px-1 py-0.5 rounded-md font-black font-sans">
                     {salesHistory.length}
                   </span>
                 )}
               </button>
 
+              {/* 3. شاشة الـ POS / الكاشير (Third) */}
               <button
-                onClick={() => setActiveTab('Prices')}
-                className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  activeTab === 'Prices'
-                    ? 'bg-amber-500 text-white shadow-[4px_4px_0px_0px_rgba(30,41,59,0.1)] border-2 border-amber-600'
+                onClick={() => setActiveTab('POS')}
+                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeTab === 'POS'
+                    ? 'bg-pink-500 text-white shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-pink-600'
                     : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                 }`}
               >
-                <Coins className="w-4 h-4" />
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>شاشة الـ POS</span>
+                {cart.length > 0 && (
+                  <span className="bg-white text-pink-600 text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-black border border-pink-100">
+                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                  </span>
+                )}
+              </button>
+
+              {/* 4. تعديل الأسعار (Fourth) */}
+              <button
+                onClick={() => setActiveTab('Prices')}
+                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeTab === 'Prices'
+                    ? 'bg-amber-500 text-white shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-amber-600'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5" />
                 <span>تعديل الأسعار</span>
+              </button>
+
+              {/* 5. إعداد الطلب الذاتي / الباركود (Last) */}
+              <button
+                onClick={() => setActiveTab('OnlineSetup')}
+                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
+                  activeTab === 'OnlineSetup'
+                    ? 'bg-teal-600 text-white shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-teal-700'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                }`}
+              >
+                <Link className="w-3.5 h-3.5" />
+                <span>إعداد الطلب الذاتي 🌐</span>
               </button>
             </div>
           </div>
@@ -2708,9 +2741,9 @@ export default function App() {
                                 <button
                                   type="button"
                                   onClick={() => handleAcceptOnlineOrder(order.id)}
-                                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[10.5px] py-1.5 px-3 rounded-lg transition cursor-pointer text-center whitespace-nowrap active:scale-95 duration-100 flex-1"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10.5px] py-1.5 px-3 rounded-lg transition cursor-pointer text-center whitespace-nowrap active:scale-95 duration-100 flex-1"
                                 >
-                                  قبول وتحضير 👨‍🍳⚡
+                                  قبول وبدء التحضير 👨‍🍳⚡
                                 </button>
                                 <button
                                   type="button"
@@ -2726,9 +2759,9 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handlePrepareOnlineOrder(order)}
-                                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-black text-[11px] py-2 px-3 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100"
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] py-2 px-3 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100"
                               >
-                                تم التجهيز والتسليم للعميل 🔔✅
+                                اكتمال وتسليم للزبون 🍧✅
                               </button>
                             )}
 
@@ -2903,6 +2936,11 @@ export default function App() {
                     {salesStats.totalRevenue.toFixed(2)}
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1 block font-black">عملات بالريال السعودي</span>
+                  
+                  <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200 flex justify-between text-[9px] font-bold text-slate-500">
+                    <span>🏬 كاشير: {(salesStats.totalRevenue - salesStats.onlineRevenue).toFixed(2)}</span>
+                    <span>🌐 أونلاين: {salesStats.onlineRevenue.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -2954,7 +2992,12 @@ export default function App() {
                   <span className="block text-2xl font-black text-emerald-600 font-mono">
                     {salesStats.ordersCount}
                   </span>
-                  <span className="text-[10px] text-slate-400 mt-1 block font-black">فواتير POS اليوم</span>
+                  <span className="text-[10px] text-slate-400 mt-1 block font-black">فواتير اليوم الإجمالية</span>
+
+                  <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200 flex justify-between text-[9px] font-bold text-emerald-700">
+                    <span>🏬 كاشير: {salesStats.posOrdersCount}</span>
+                    <span>🌐 أونلاين: {salesStats.onlineOrdersCount}</span>
+                  </div>
                 </div>
               </div>
 
@@ -2985,7 +3028,7 @@ export default function App() {
                     <span>خيارات فلترة وتصفية الفواتير النشطة:</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     {/* Search query */}
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] text-slate-500 font-extrabold" htmlFor="ledger-search-input">
@@ -2999,6 +3042,23 @@ export default function App() {
                         onChange={(e) => setLedgerSearch(e.target.value)}
                         className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-pink-400 focus:ring-1 focus:ring-pink-400 transition"
                       />
+                    </div>
+
+                    {/* Order Source select */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] text-slate-500 font-extrabold" htmlFor="ledger-source-select">
+                        مصدر وطبيعة الطلب:
+                      </label>
+                      <select
+                        id="ledger-source-select"
+                        value={ledgerSourceFilter}
+                        onChange={(e) => setLedgerSourceFilter(e.target.value as 'all' | 'pos' | 'online')}
+                        className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-pink-400 transition"
+                      >
+                        <option value="all">الكل (كاشير + أونلاين)</option>
+                        <option value="pos">🏬 كاشير نقاط البيع (POS)</option>
+                        <option value="online">🌐 خدمة ذاتية سحابي (أونلاين)</option>
+                      </select>
                     </div>
 
                     {/* Payment Method select */}
@@ -3052,12 +3112,13 @@ export default function App() {
                       </span>
                     </div>
 
-                    {(ledgerSearch !== '' || ledgerPaymentMethodFilter !== 'all' || ledgerContainerFilter !== 'all') && (
+                    {(ledgerSearch !== '' || ledgerPaymentMethodFilter !== 'all' || ledgerContainerFilter !== 'all' || ledgerSourceFilter !== 'all') && (
                       <button
                         onClick={() => {
                           setLedgerSearch('');
                           setLedgerPaymentMethodFilter('all');
                           setLedgerContainerFilter('all');
+                          setLedgerSourceFilter('all');
                         }}
                         className="text-[10px] font-black hover:underline text-red-600 bg-red-50 hover:bg-red-100/50 border border-red-200 py-1.5 px-3 rounded-xl transition cursor-pointer flex items-center gap-1"
                       >
@@ -3122,6 +3183,15 @@ export default function App() {
                               <div className="text-[10px] text-slate-500 font-sans font-bold mt-0.5 max-w-[120px] truncate" title={sale.customerName}>
                                 👤 {sale.customerName}
                               </div>
+                            )}
+                            {sale.isOnline || sale.calculatedDiscountName?.includes('أونلاين') ? (
+                              <span className="inline-block bg-sky-50 border border-sky-150 text-sky-700 text-[8.5px] font-black px-1.5 py-0.5 rounded-md mt-1 font-sans">
+                                🌐 خدمة سحابية أونلاين
+                              </span>
+                            ) : (
+                              <span className="inline-block bg-pink-50 border border-pink-150 text-pink-650 text-[8.5px] font-black px-1.5 py-0.5 rounded-md mt-1 font-sans">
+                                🏬 كاشير نقاط بيع
+                              </span>
                             )}
                           </td>
                           <td className="py-4 text-slate-500 font-bold">{sale.timestamp}</td>
