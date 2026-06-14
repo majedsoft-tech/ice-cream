@@ -180,7 +180,7 @@ export default function App() {
 
   // --- SEGREGATED CUSTOMER SELF-ORDER STATES ---
   const [viewMode, setViewMode] = useState<'seller' | 'customer'>(() => {
-    return (window.location.hash === '#/customer' || window.location.hash === '#customer') ? 'customer' : 'seller';
+    return (window.location.hash === '#/seller' || window.location.hash === '#seller') ? 'seller' : 'customer';
   });
   const [customerCart, setCustomerCart] = useState<CartItem[]>([]);
   const [selfCustomerName, setSelfCustomerName] = useState<string>('');
@@ -444,7 +444,7 @@ export default function App() {
   // Sync hash routing
   useEffect(() => {
     const handleHashChange = () => {
-      const mode = (window.location.hash === '#/customer' || window.location.hash === '#customer') ? 'customer' : 'seller';
+      const mode = (window.location.hash === '#/seller' || window.location.hash === '#seller') ? 'seller' : 'customer';
       setViewMode(mode);
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -1526,9 +1526,17 @@ export default function App() {
         </main>
 
         {/* --- CUSTOMER BRAND FOOTER --- */}
-        <footer className="mt-16 text-center text-xs text-slate-400 select-none pb-8">
+        <footer className="mt-16 text-center text-xs text-slate-400 select-none pb-8 space-y-2">
           <p className="font-extrabold text-pink-400 tracking-wide font-sans">ادفع لاحقاً نقداً أو شبكة يدوياً عند استلام الكوب اللذيذ من لوحة الكاشير 🍦</p>
           <p className="mt-1.5 opacity-75 font-bold">كل آيس كريم يصنع بشغف لابتسامتكم • سحر الآيس كريم</p>
+          <div className="pt-2 opacity-50 hover:opacity-100 transition">
+            <a 
+              href="#/seller" 
+              className="text-[10px] bg-slate-100/80 text-slate-500 hover:text-slate-850 rounded-lg px-2.5 py-1.5 hover:bg-slate-200"
+            >
+              الولوج لكاشير المبيعات / الإدارة ⚙️
+            </a>
+          </div>
         </footer>
 
       </div>
@@ -1704,7 +1712,7 @@ export default function App() {
                   </div>
                 </div>
                 <a 
-                  href="#/customer" 
+                  href="#/" 
                   target="_blank" 
                   rel="noreferrer" 
                   className="bg-pink-500 hover:bg-pink-600 text-white font-black px-4.5 py-2.5 rounded-xl transition shadow-md hover:scale-[1.02] flex items-center gap-1 shrink-0 text-center text-[10px] border-b-2 border-pink-700"
@@ -2391,11 +2399,11 @@ export default function App() {
                   قم بمشاركة هذا الرابط مع عملائك، أو افتحه في شاشة تابلت إضافية مخصصة للجمهور عند طابور المحل، لتمكينهم من تركيب طلباتهم بأنفسهم والدفع عند الاستلام. ستظهر طلباتهم هنا فوراً مع تنبيهات صوتية حية!
                 </p>
                 <div className="bg-emerald-900/45 p-2.5 rounded-xl text-xs font-mono font-bold select-all inline-block border border-white/10" dir="ltr">
-                  {window.location.origin + window.location.pathname}#/customer
+                  {window.location.origin + window.location.pathname}#/
                 </div>
               </div>
               <a
-                href="#/customer"
+                href="#/"
                 target="_blank"
                 rel="noreferrer"
                 className="bg-white text-emerald-700 hover:bg-emerald-50 font-black px-6 py-3.5 rounded-2xl transition hover:scale-[1.02] shadow-lg flex items-center gap-2 shrink-0 text-xs text-center border-b-4 border-emerald-200"
