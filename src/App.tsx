@@ -1027,7 +1027,7 @@ export default function App() {
               <button
                 type="button"
                 id="cart-overlay-button"
-                onClick={() => setIsCartOpen(true)}
+                onClick={() => setIsCartOpen(!isCartOpen)}
                 className="relative flex items-center gap-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 border-pink-707 cursor-pointer hover:bg-pink-600 hover:shadow-md transition active:scale-95 duration-200 shrink-0 self-center"
               >
                 <div className="relative">
@@ -1217,31 +1217,21 @@ export default function App() {
             /* --- CLIENT INLINE SHOPPING CART --- */
             <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
               
-              {/* Back to designing bar */}
-              <div className="flex flex-col sm:flex-row items-center justify-between bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.06)] gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">🛒</span>
-                  <div className="text-right font-sans">
-                    <h2 className="text-base font-black text-slate-800">سلة طلباتي المصممة</h2>
-                    <p className="text-[10px] text-slate-400 font-bold">يرجى مراجعة تفاصيل الكوب وتجهيز معلومات الاستلام وإرساله للبائع</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCartOpen(false)}
-                  className="w-full sm:w-auto px-5 py-3 text-white font-black rounded-2xl text-xs transition border-b-4 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 duration-150"
-                  style={{ backgroundColor: '#ec4899', borderColor: '#be185d' }}
-                >
-                  <span>🍦 العودة لتصميم الأكواب</span>
-                </button>
-              </div>
-
               {/* Grid content for Cart Items & Details */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
                 {/* Right/Main Column: Items List */}
                 <div className="lg:col-span-7 bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                  <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5">١. الأكواب المصممة في سلتك</h3>
+                  <div className="flex justify-between items-center border-b border-pink-100 pb-2">
+                    <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2">١. الأكواب المصممة في سلتك</h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsCartOpen(false)}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-black px-2.5 py-1.5 rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-1 active:scale-95"
+                    >
+                      <span>← العودة للتصميم 🍦</span>
+                    </button>
+                  </div>
                   
                   {customerCart.length === 0 ? (
                     <div className="text-center py-12 px-4 text-slate-400 space-y-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
