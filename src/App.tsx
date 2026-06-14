@@ -29,7 +29,7 @@ import {
 import { CONTAINER_OPTIONS, FLAVOR_OPTIONS, TOPPING_OPTIONS, DISCOUNTS, DEFAULT_CURRENCY } from './data';
 import { ContainerOption, FlavorOption, ToppingOption, CartItem, SaleRecord, OrderDiscount, OnlineOrder } from './types';
 import { db, OperationType, handleFirestoreError } from './firebase';
-import { collection, doc, setDoc, getDocs, deleteDoc, query, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, onSnapshot, writeBatch } from 'firebase/firestore';
 
 const cleanForFirestore = <T,>(obj: T): T => {
   if (!obj) return obj;
@@ -38,7 +38,7 @@ const cleanForFirestore = <T,>(obj: T): T => {
 
 export default function App() {
   // --- STATE ---
-  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices'>('History');
+  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices'>('OnlineOrders');
 
   const [containers, setContainers] = useState<ContainerOption[]>(() => {
     const saved = localStorage.getItem('ice_cream_containers');
@@ -403,12 +403,8 @@ export default function App() {
       snapshot.forEach((docSnap) => {
         ordersList.push(docSnap.data() as OnlineOrder);
       });
-      // Sort: Pending first, then by timestamp descending
-      ordersList.sort((a, b) => {
-        if (a.status === 'pending' && b.status !== 'pending') return -1;
-        if (a.status !== 'pending' && b.status === 'pending') return 1;
-        return b.timestamp.localeCompare(a.timestamp);
-      });
+      // Sort: Newest timestamp first (newest order first)
+      ordersList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       setOnlineOrders(ordersList);
     }, (error) => {
       console.error("Error listening to online orders:", error);
@@ -766,6 +762,40 @@ export default function App() {
     }
   };
 
+  const handleDeleteOnlineOrder = async (orderId: string, orderNumber: string) => {
+    if (window.confirm(`هل أنت متأكد من حذف الطلب الأونلاين رقم ${orderNumber} نهائياً؟`)) {
+      try {
+        await deleteDoc(doc(db, 'online_orders', orderId));
+        triggerNotice(`تم حذف الطلب رقم ${orderNumber} بنجاح من السحابة.`, 'success');
+      } catch (e) {
+        console.error(e);
+        triggerNotice('عذراً، حدث خطأ أثناء حذف طلب الأونلاين.', 'error');
+        handleFirestoreError(e, OperationType.DELETE, `online_orders/${orderId}`);
+      }
+    }
+  };
+
+  const handleClearProcessedOnlineOrders = async () => {
+    const processedOrders = onlineOrders.filter(o => o.status === 'prepared' || o.status === 'cancelled');
+    if (processedOrders.length === 0) {
+      triggerNotice('لا توجد طلبات مكتملة أو ملغاة لحذفها حالياً.', 'info');
+      return;
+    }
+    if (window.confirm(`هل تريد حذف جميع الطلبات المكتملة أو الملغاة عدد (${processedOrders.length}) نهائياً؟`)) {
+      try {
+        const batch = writeBatch(db);
+        processedOrders.forEach(o => {
+          batch.delete(doc(db, 'online_orders', o.id));
+        });
+        await batch.commit();
+        triggerNotice('تم تنظيف قائمة طلبات الأونلاين وحذف الطلبات المنتهية والمستلمة بنجاح! 🧹✨', 'success');
+      } catch (e) {
+        console.error(e);
+        triggerNotice('عذراً، حدث خطأ أثناء تنظيف طلبات الأونلاين.', 'error');
+      }
+    }
+  };
+
   // --- CLIENT SELF-SERVICE TOTALS & CART ACTIONS ---
   const customerTotals = useMemo(() => {
     const subtotal = customerCart.reduce((sum, item) => sum + (item.basePrice * item.quantity), 0);
@@ -929,6 +959,23 @@ export default function App() {
     setActiveCustomerOrder(null);
     setSelfCustomerName('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleRefreshOrderStatus = async () => {
+    if (!recentOnlineOrderId) return;
+    try {
+      const snap = await getDoc(doc(db, 'online_orders', recentOnlineOrderId));
+      if (snap.exists()) {
+        setActiveCustomerOrder(snap.data() as OnlineOrder);
+        triggerNotice('تم تحديث حالة الطلب من السحابة بنجاح! 🔄', 'success');
+      } else {
+        setActiveCustomerOrder(null);
+        triggerNotice('لم يتم العثور على هذا الطلب في السحابة.', 'info');
+      }
+    } catch (e) {
+      console.error(e);
+      triggerNotice('عذراً، تعذر تحديث الحالة يرجى التأكد من اتصال الإنترنت.', 'error');
+    }
   };
 
   // --- HISTORIC STATISTICS ---
@@ -1211,6 +1258,15 @@ export default function App() {
 
               {/* Action trigger buttons */}
               <div className="flex flex-col gap-3 pt-4 border-t border-slate-100 mt-4">
+                {/* Manual refresh button - always show to allow immediate check */}
+                <button
+                  type="button"
+                  onClick={handleRefreshOrderStatus}
+                  className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs py-3.5 rounded-xl border border-blue-200 transition text-center flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 duration-100"
+                >
+                  <span>تحديث حالة الطلب يدوياً 🔄</span>
+                </button>
+
                 {activeCustomerOrder.status === 'pending' && (
                   !isCancelConfirmOpen ? (
                     <button
@@ -1241,6 +1297,16 @@ export default function App() {
                       </div>
                     </div>
                   )
+                )}
+
+                {(activeCustomerOrder.status === 'pending' || activeCustomerOrder.status === 'accepted') && (
+                  <button
+                    type="button"
+                    onClick={handleStartNewCustomerOrder}
+                    className="w-full bg-pink-50 hover:bg-pink-100 text-pink-600 font-extrabold text-xs py-3.5 rounded-xl border border-pink-200 transition text-center cursor-pointer active:scale-95 duration-100"
+                  >
+                    بدء تصميم آيس كريم جديد 🍦✨
+                  </button>
                 )}
                 
                 {(activeCustomerOrder.status === 'prepared' || activeCustomerOrder.status === 'cancelled') && (
@@ -1785,7 +1851,7 @@ export default function App() {
                 ) : null}
               </button>
 
-              {/* 2. أرشيف المبيعات (Second) */}
+              {/* 2. المبيعات (Second) */}
               <button
                 onClick={() => setActiveTab('History')}
                 className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -1795,28 +1861,10 @@ export default function App() {
                 }`}
               >
                 <History className="w-3.5 h-3.5" />
-                <span>أرشيف المبيعات</span>
+                <span>المبيعات</span>
                 {salesHistory.length > 0 && (
                   <span className="bg-slate-700 text-white text-[9px] px-1 py-0.5 rounded-md font-black font-sans">
                     {salesHistory.length}
-                  </span>
-                )}
-              </button>
-
-              {/* 3. شاشة الـ POS / الكاشير (Third) */}
-              <button
-                onClick={() => setActiveTab('POS')}
-                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'POS'
-                    ? 'bg-pink-500 text-white shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-pink-600'
-                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
-                }`}
-              >
-                <ShoppingBag className="w-3.5 h-3.5" />
-                <span>شاشة الـ POS</span>
-                {cart.length > 0 && (
-                  <span className="bg-white text-pink-600 text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center font-black border border-pink-100">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
                   </span>
                 )}
               </button>
@@ -2582,31 +2630,44 @@ export default function App() {
                 <h3 className="font-black text-slate-800 text-base border-r-4 border-pink-500 pr-3">قائمة الطلبات السحابية الواردة</h3>
                 
                 {/* VIEW LAYOUT SWITCHERS */}
-                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl self-end sm:self-auto font-sans">
-                  <button
-                    type="button"
-                    onClick={() => setOnlineViewLayout('grid')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                      onlineViewLayout === 'grid'
-                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
-                        : 'text-slate-500 hover:text-slate-750'
-                    }`}
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>عرض شبكة 👥</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOnlineViewLayout('list')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                      onlineViewLayout === 'list'
-                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
-                        : 'text-slate-500 hover:text-slate-750'
-                    }`}
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    <span>عرض قائمة 📄</span>
-                  </button>
+                <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto font-sans">
+                  {onlineOrders.some(o => o.status === 'prepared' || o.status === 'cancelled') && (
+                    <button
+                      type="button"
+                      onClick={handleClearProcessedOnlineOrders}
+                      className="px-3 py-1.5 rounded-xl text-[11px] font-black transition cursor-pointer flex items-center gap-1 bg-red-50 hover:bg-red-105 text-red-650 border border-red-200 shadow-sm active:scale-95 duration-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      <span>حذف الطلبات المنتهية 🧹</span>
+                    </button>
+                  )}
+
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setOnlineViewLayout('grid')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                        onlineViewLayout === 'grid'
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                          : 'text-slate-500 hover:text-slate-750'
+                      }`}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span>عرض شبكة 👥</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOnlineViewLayout('list')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                        onlineViewLayout === 'list'
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                          : 'text-slate-500 hover:text-slate-750'
+                      }`}
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span>عرض قائمة 📄</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2623,8 +2684,8 @@ export default function App() {
                   {onlineOrders.map((order) => {
                     const statusConfig = {
                       pending: { badgeBg: 'bg-amber-50 border-amber-200 text-amber-700 animate-pulse', label: '🕒 جديد قيد الانتظار' },
-                      accepted: { badgeBg: 'bg-blue-50 border-blue-200 text-blue-700', label: '👨‍🍳 جاري التحضير بالمطبخ' },
-                      prepared: { badgeBg: 'bg-emerald-50 border-emerald-250 text-emerald-700', label: '✅ مكتمل ومسلم للعميل' },
+                      accepted: { badgeBg: 'bg-blue-50 border-blue-200 text-blue-700', label: '👨‍🍳 تم الاستلام وجاري التحضير' },
+                      prepared: { badgeBg: 'bg-emerald-50 border-emerald-250 text-emerald-700', label: '🔔 تم التجهيز وجاهز للاستلام' },
                       cancelled: { badgeBg: 'bg-red-50 border-red-200 text-red-700', label: '❌ ملغى' }
                     }[order.status] || { badgeBg: 'bg-slate-50 border-slate-200 text-slate-700', label: order.status };
 
@@ -2735,7 +2796,7 @@ export default function App() {
                           </div>
 
                           {/* Action button triggers - scaled down & compact */}
-                          <div className={`flex gap-1.5 ${isList ? 'w-auto lg:w-full items-center justify-end' : 'mt-2.5'}`}>
+                          <div className={`flex gap-1.5 items-center ${isList ? 'w-auto lg:w-full items-center justify-end' : 'mt-2.5'}`}>
                             {order.status === 'pending' && (
                               <>
                                 <button
@@ -2743,12 +2804,12 @@ export default function App() {
                                   onClick={() => handleAcceptOnlineOrder(order.id)}
                                   className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10.5px] py-1.5 px-3 rounded-lg transition cursor-pointer text-center whitespace-nowrap active:scale-95 duration-100 flex-1"
                                 >
-                                  قبول وبدء التحضير 👨‍🍳⚡
+                                  ١. تم الاستلام وجاري التحضير 👨‍🍳⏳
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleCancelOnlineOrder(order.id)}
-                                  className="bg-red-50 hover:bg-red-150 border border-red-200 text-red-600 font-black text-[10.5px] py-1.5 px-2 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100"
+                                  className="bg-red-50 hover:bg-red-150 border border-red-200 text-red-600 font-black text-[10.5px] py-1.5 px-2 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100 text-nowrap"
                                 >
                                   رفض ❌
                                 </button>
@@ -2759,23 +2820,33 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handlePrepareOnlineOrder(order)}
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] py-2 px-3 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100"
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] py-2 px-3 rounded-lg transition cursor-pointer text-center active:scale-95 duration-100 flex-1"
                               >
-                                اكتمال وتسليم للزبون 🍧✅
+                                ٢. تم تجهيز الطلب وجاهز للاستلام 🔔✅
                               </button>
                             )}
 
                             {order.status === 'prepared' && (
-                              <div className="w-full bg-emerald-50 text-emerald-700 font-extrabold text-[10px] py-1 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-emerald-150">
-                                مكتمل ومسجل سحابياً كاشير 🍦🏆
+                              <div className="flex-1 bg-emerald-50 text-emerald-700 font-extrabold text-[10px] py-1.5 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-emerald-150">
+                                جاهز للاستلام وبانتظار العميل 🍦⏳
                               </div>
                             )}
 
                             {order.status === 'cancelled' && (
-                              <div className="w-full bg-slate-100 text-slate-500 font-bold text-[10px] py-1 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-slate-200">
+                              <div className="flex-1 bg-slate-100 text-slate-500 font-bold text-[10px] py-1.5 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-slate-200">
                                 تم إلغاء الطلب ❌
                               </div>
                             )}
+
+                            {/* Individual Delete Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOnlineOrder(order.id, order.orderNumber)}
+                              className="bg-red-50 hover:bg-red-105 text-red-600 p-2.5 rounded-lg border border-red-200 transition cursor-pointer text-center active:scale-95 duration-100 shrink-0"
+                              title="حذف الطلب نهائياً"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500 hover:text-red-700" />
+                            </button>
                           </div>
                         </div>
 
