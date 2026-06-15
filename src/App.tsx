@@ -1955,7 +1955,7 @@ export default function App() {
                 }`}
               >
                 <Link className="w-3.5 h-3.5" />
-                <span>رابط طلبات الاون لاين</span>
+                <span>رابط طلبات الاونلاين</span>
               </button>
             </div>
           </div>
