@@ -1021,23 +1021,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleRefreshOrderStatus = async () => {
-    if (!recentOnlineOrderId) return;
-    try {
-      const snap = await getDoc(doc(db, 'online_orders', recentOnlineOrderId));
-      if (snap.exists()) {
-        setActiveCustomerOrder(snap.data() as OnlineOrder);
-        triggerNotice('تم تحديث حالة الطلب من السحابة بنجاح! 🔄', 'success');
-      } else {
-        setActiveCustomerOrder(null);
-        triggerNotice('لم يتم العثور على هذا الطلب في السحابة.', 'info');
-      }
-    } catch (e) {
-      console.error(e);
-      triggerNotice('عذراً، تعذر تحديث الحالة يرجى التأكد من اتصال الإنترنت.', 'error');
-    }
-  };
-
   // --- HISTORIC STATISTICS ---
   const salesStats = useMemo(() => {
     let totalRevenue = 0;
@@ -1217,16 +1200,6 @@ export default function App() {
           ) : recentOnlineOrderId && activeCustomerOrder ? (
             /* --- SUBMITTED ORDER LIVE STATUS DIALOG --- */
             <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6">
-              <div className="text-center space-y-3">
-                <span className="text-6.5xl inline-block animate-bounce">
-                  {activeCustomerOrder.status === 'pending' ? '🕒' :
-                   activeCustomerOrder.status === 'accepted' ? '👨‍🍳' :
-                   activeCustomerOrder.status === 'prepared' ? '✨🎉' : '😔'}
-                </span>
-                <h2 className="text-2xl font-black text-slate-800">مرحباً بك ونورتنا {activeCustomerOrder.customerName}!</h2>
-                <p className="text-xs text-slate-400 font-bold">الحالة المباشرة لطلبك رقم <span className="font-mono text-pink-600 font-black">{activeCustomerOrder.orderNumber}</span></p>
-              </div>
-
               {/* Status Stepper visualization */}
               <div className="grid grid-cols-3 gap-2 py-4 relative">
                 {/* Connector lines behind */}
@@ -1331,15 +1304,6 @@ export default function App() {
 
               {/* Action trigger buttons */}
               <div className="flex flex-col gap-3 pt-4 border-t border-slate-100 mt-4">
-                {/* Manual refresh button - always show to allow immediate check */}
-                <button
-                  type="button"
-                  onClick={handleRefreshOrderStatus}
-                  className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-xs py-3.5 rounded-xl border border-blue-200 transition text-center flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 duration-100"
-                >
-                  <span>تحديث حالة الطلب يدوياً 🔄</span>
-                </button>
-
                 {activeCustomerOrder.status === 'pending' && (
                   !isCancelConfirmOpen ? (
                     <button
@@ -1991,7 +1955,7 @@ export default function App() {
                 }`}
               >
                 <Link className="w-3.5 h-3.5" />
-                <span>إعداد الطلب الذاتي 🌐</span>
+                <span>رابط طلبات الاون لاين</span>
               </button>
             </div>
           </div>
@@ -2998,34 +2962,22 @@ export default function App() {
                   </p>
                 </div>
                 
-                {/* MOCK QR / PRINT BANNER DESIGN */}
-                <div className="border-4 border-dashed border-pink-400 p-6 rounded-3xl bg-pink-50/30 w-full max-w-xs space-y-4">
-                  <div className="mx-auto w-32 h-32 bg-slate-900 rounded-2xl p-3 flex flex-col justify-between items-center text-white relative shadow-md">
-                    <div className="grid grid-cols-4 gap-1 w-full h-full opacity-95">
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-transparent" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-transparent" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-transparent" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-transparent" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-transparent" />
-                      <div className="rounded-sm bg-white" />
-                      <div className="rounded-sm bg-transparent" />
-                      <div className="rounded-sm bg-white" />
-                    </div>
+                {/* DYNAMIC REAL QR CODE DESIGN */}
+                <div id="customer-qr-card-container" className="border-4 border-dashed border-pink-400 p-6 rounded-3xl bg-pink-50/30 w-full max-w-xs space-y-4 flex flex-col items-center">
+                  <div className="relative p-3 bg-white border-4 border-slate-800 rounded-2xl shadow-md overflow-hidden group">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + window.location.pathname)}`}
+                      alt="حجّز طلبك أونلاين"
+                      className="w-40 h-40 object-contain block transition duration-300 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                    />
                     {/* Floating Center Icecream */}
-                    <span className="absolute inset-0 m-auto w-10 h-10 bg-white border-2 border-slate-900 rounded-lg flex items-center justify-center text-xl shadow">🍦</span>
+                    <span className="absolute inset-0 m-auto w-10 h-10 bg-white border-2 border-slate-800 rounded-xl flex items-center justify-center text-base shadow-md">🍦</span>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] bg-pink-100 text-pink-600 px-2.5 py-0.5 rounded-full font-black">امسح لتبدأ التصميم</span>
+                    <span className="text-[10px] bg-pink-100 text-pink-600 px-2.5 py-0.5 rounded-full font-black">امسح الكود لتبدأ الطلب الذاتي 📱</span>
                     <h4 className="text-xs font-black text-slate-800">اصنع كوب الآيس كريم الخاص بك!</h4>
-                    <span className="text-[9px] text-slate-400 font-mono block select-all">{window.location.origin + window.location.pathname}</span>
+                    <span className="text-[9px] text-slate-400 font-mono block select-all break-all select-all font-bold mt-1 text-center bg-white px-2 py-1 rounded border border-slate-200">{window.location.origin + window.location.pathname}</span>
                   </div>
                 </div>
 
