@@ -24,7 +24,8 @@ import {
   MessageCircle,
   LayoutGrid,
   List,
-  Link
+  Link,
+  Settings
 } from 'lucide-react';
 import { CONTAINER_OPTIONS, FLAVOR_OPTIONS, TOPPING_OPTIONS, DISCOUNTS, DEFAULT_CURRENCY } from './data';
 import { ContainerOption, FlavorOption, ToppingOption, CartItem, SaleRecord, OrderDiscount, OnlineOrder } from './types';
@@ -75,6 +76,8 @@ export default function App() {
     }
     return TOPPING_OPTIONS;
   });
+
+  const [isOrdersStopped, setIsOrdersStopped] = useState<boolean>(false);
   
   // Current Item Configuration State
   const [selectedContainer, setSelectedContainer] = useState<ContainerOption>(() => {
@@ -154,6 +157,56 @@ export default function App() {
       }).catch(err => {
         console.error("Error setting pricing:", err);
         triggerNotice('حدث خطأ أثناء حفظ السعر بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    }
+  };
+
+  const handleToggleOrdersStopped = (stopped: boolean) => {
+    setDoc(doc(db, 'settings', 'prices'), {
+      isOrdersStopped: stopped
+    }, { merge: true }).then(() => {
+      triggerNotice(stopped ? 'تم إيقاف استقبال الطلبات للموقع كامل 🛑' : 'تم تفعيل استقبال الطلبات للموقع كامل 🟢', 'success');
+    }).catch(err => {
+      console.error("Error setting orders stopped status:", err);
+      triggerNotice('حدث خطأ أثناء تغيير حالة استقبال الطلبات.', 'error');
+      handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+    });
+  };
+
+  const handleToggleAvailability = (category: 'container' | 'flavor' | 'topping', id: string, currentVal: boolean) => {
+    const newVal = !currentVal;
+    if (category === 'container') {
+      const updated = containers.map(c => c.id === id ? { ...c, isAvailable: newVal } : c);
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers: updated
+      }, { merge: true }).then(() => {
+        triggerNotice(`تم تحديث حالة توفر الوعاء بنجاح!`, 'success');
+      }).catch(err => {
+        console.error("Error setting availability:", err);
+        triggerNotice('حدث خطأ أثناء تحديث التوفر بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'flavor') {
+      const updated = flavors.map(f => f.id === id ? { ...f, isAvailable: newVal } : f);
+      setDoc(doc(db, 'settings', 'prices'), {
+        flavors: updated
+      }, { merge: true }).then(() => {
+        triggerNotice(`تم تحديث حالة توفر النكهة بنجاح!`, 'success');
+      }).catch(err => {
+        console.error("Error setting availability:", err);
+        triggerNotice('حدث خطأ أثناء تحديث التوفر بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'topping') {
+      const updated = toppings.map(t => t.id === id ? { ...t, isAvailable: newVal } : t);
+      setDoc(doc(db, 'settings', 'prices'), {
+        toppings: updated
+      }, { merge: true }).then(() => {
+        triggerNotice(`تم تحديث حالة توفر الإضافة بنجاح!`, 'success');
+      }).catch(err => {
+        console.error("Error setting availability:", err);
+        triggerNotice('حدث خطأ أثناء تحديث التوفر بالخادم.', 'error');
         handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
       });
     }
@@ -366,12 +419,14 @@ export default function App() {
           setToppings(data.toppings);
           localStorage.setItem('ice_cream_toppings', JSON.stringify(data.toppings));
         }
+        setIsOrdersStopped(data.isOrdersStopped || false);
       } else {
         // Doc doesn't exist yet, populate with default options
         setDoc(doc(db, 'settings', 'prices'), {
           containers: CONTAINER_OPTIONS,
           flavors: FLAVOR_OPTIONS,
-          toppings: TOPPING_OPTIONS
+          toppings: TOPPING_OPTIONS,
+          isOrdersStopped: false
         }).catch(err => {
           console.error("Error creating initial prices doc:", err);
           handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
@@ -404,7 +459,11 @@ export default function App() {
         ordersList.push(docSnap.data() as OnlineOrder);
       });
       // Sort: Newest timestamp first (newest order first)
-      ordersList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      ordersList.sort((a, b) => {
+        const timeA = a.createdAt || (a.id && a.id.startsWith('ONLINE-') ? parseInt(a.id.replace('ONLINE-', '')) : 0) || 0;
+        const timeB = b.createdAt || (b.id && b.id.startsWith('ONLINE-') ? parseInt(b.id.replace('ONLINE-', '')) : 0) || 0;
+        return timeB - timeA;
+      });
       setOnlineOrders(ordersList);
     }, (error) => {
       console.error("Error listening to online orders:", error);
@@ -906,6 +965,7 @@ export default function App() {
       orderNumber: orderNum,
       customerName: selfCustomerName.trim(),
       timestamp: new Date().toLocaleString('ar-SA', { hour12: true }),
+      createdAt: Date.now(),
       items: [...customerCart],
       subtotal: customerCart.reduce((sum, item) => sum + (item.basePrice * item.quantity), 0),
       toppingsTotal: customerCart.reduce((sum, item) => sum + (item.toppingsPrice * item.quantity), 0),
@@ -1141,7 +1201,20 @@ export default function App() {
         </header>
 
         <main className="max-w-7xl mx-auto px-4 mt-4 relative">
-          {recentOnlineOrderId && activeCustomerOrder ? (
+          {isOrdersStopped && !(recentOnlineOrderId && activeCustomerOrder) ? (
+            /* --- ONLINE ORDERS STOPPED SCREEN --- */
+            <div className="max-w-xl mx-auto bg-white rounded-3xl p-10 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] text-center space-y-6 my-12 font-sans">
+              <div className="text-6xl animate-bounce">🍨🛑</div>
+              <h2 className="text-2xl font-black text-rose-600">نعتذر منكم، استقبال الطلبات متوقف حالياً</h2>
+              <p className="text-sm font-bold text-slate-500 leading-relaxed">
+                قام فريق العمل بإيقاف استقبال الطلبات السحابية والخدمة الذاتية مؤقتاً لتخفيف الضغط أو لانتهاء ساعات العمل الرسمية.
+              </p>
+              <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200">
+                <span className="text-xs font-black text-amber-800 block">✨ نسعد دائماً بخدمتكم وتلبية رغباتكم قريباً جداً! ✨</span>
+              </div>
+              <p className="text-[10px] text-slate-400 font-bold">يمكنك تجديد الصفحة أو زيارتنا لاحقاً لمعاودة الطلب الفوري.</p>
+            </div>
+          ) : recentOnlineOrderId && activeCustomerOrder ? (
             /* --- SUBMITTED ORDER LIVE STATUS DIALOG --- */
             <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6">
               <div className="text-center space-y-3">
@@ -1575,14 +1648,18 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {containers.map(opt => {
                     const isSelected = custContainer?.id === opt.id;
+                    const isAvailable = opt.isAvailable !== false;
                     return (
                       <button
                         key={opt.id}
+                        disabled={!isAvailable}
                         onClick={() => setCustContainer(opt)}
-                        className={`text-center p-6 rounded-3xl border-4 transition-all relative overflow-hidden flex flex-col items-center justify-center gap-2.5 cursor-pointer ${
-                          isSelected
-                            ? 'bg-pink-50/20 border-pink-500 shadow-[8px_8px_0px_0px_rgba(236,72,153,0.1)]'
-                            : 'bg-white border-slate-200 opacity-80 hover:opacity-100'
+                        className={`text-center p-6 rounded-3xl border-4 transition-all relative overflow-hidden flex flex-col items-center justify-center gap-2.5 ${
+                          !isAvailable
+                            ? 'bg-slate-50 border-slate-200 opacity-40 cursor-not-allowed'
+                            : isSelected
+                              ? 'bg-pink-50/20 border-pink-500 shadow-[8px_8px_0px_0px_rgba(236,72,153,0.1)] cursor-pointer'
+                              : 'bg-white border-slate-200 opacity-80 hover:opacity-100 cursor-pointer'
                         }`}
                       >
                         <span className="text-5xl">{opt.id === 'cone' ? '🍦' : '🍨'}</span>
@@ -1590,11 +1667,17 @@ export default function App() {
                           <span className="text-base font-black text-slate-800 block">{opt.name}</span>
                           <span className="text-[10px] text-slate-400 font-bold block mt-1 leading-relaxed">{opt.description}</span>
                         </div>
-                        <span className={`px-4 py-1.5 rounded-full font-black text-xs border-2 ${
-                          isSelected ? 'bg-pink-505 border-pink-600 text-white shadow-sm' : 'bg-pink-50 border-pink-100 text-pink-600'
-                        }`} style={{ borderColor: isSelected ? '#ec4899' : '#fbcfe8', backgroundColor: isSelected ? '#ec4899' : '#fdf2f8' }}>
-                          {opt.price.toFixed(2)} ر.س
-                        </span>
+                        {!isAvailable ? (
+                          <span className="px-4 py-1.5 rounded-full font-black text-xs border-2 bg-slate-100 border-slate-200 text-slate-500 shadow-sm">
+                            غير متوفر حالياً ❌
+                          </span>
+                        ) : (
+                          <span className={`px-4 py-1.5 rounded-full font-black text-xs border-2 ${
+                            isSelected ? 'bg-pink-505 border-pink-600 text-white shadow-sm' : 'bg-pink-50 border-pink-100 text-pink-600'
+                          }`} style={{ borderColor: isSelected ? '#ec4899' : '#fbcfe8', backgroundColor: isSelected ? '#ec4899' : '#fdf2f8' }}>
+                            {opt.price.toFixed(2)} ر.س
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -1611,10 +1694,12 @@ export default function App() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {flavors.map(opt => {
                     const countSelected = custFlavors.filter(f => f.id === opt.id).length;
+                    const isAvailable = opt.isAvailable !== false;
                     return (
                       <button
                         key={opt.id}
                         type="button"
+                        disabled={!isAvailable}
                         onClick={() => {
                           const currentTotalCount = custFlavors.length;
                           if (countSelected > 0) {
@@ -1628,16 +1713,22 @@ export default function App() {
                             setCustFlavors(prev => [...prev, opt]);
                           }
                         }}
-                        className={`p-4 rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 cursor-pointer ${
-                          countSelected > 0
-                            ? 'bg-pink-500 text-white border-pink-600 shadow-md scale-[1.02]'
-                            : 'bg-slate-50 border-slate-200 hover:border-pink-300 hover:bg-slate-100/50 text-slate-700'
+                        className={`p-4 rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 relative ${
+                          !isAvailable
+                            ? 'bg-slate-55 border-slate-150 opacity-40 cursor-not-allowed text-slate-400'
+                            : countSelected > 0
+                              ? 'bg-pink-500 text-white border-pink-600 shadow-md scale-[1.02] cursor-pointer'
+                              : 'bg-slate-50 border-slate-200 hover:border-pink-300 hover:bg-slate-100/50 text-slate-700 cursor-pointer'
                         }`}
                       >
                         <span className="text-3xl">{opt.emoji}</span>
                         <div className="text-center font-sans text-xs">
                           <span className="font-black block truncate">{opt.name}</span>
-                          {opt.price > 0 && <span className="text-[9px] font-bold block mt-0.5 opacity-80 font-mono">+{opt.price.toFixed(2)} ر.س</span>}
+                          {!isAvailable ? (
+                            <span className="text-[9px] font-black block mt-0.5 text-rose-500">غير متوفر ❌</span>
+                          ) : opt.price > 0 ? (
+                            <span className="text-[9px] font-bold block mt-0.5 opacity-80 font-mono">+{opt.price.toFixed(2)} ر.س</span>
+                          ) : null}
                         </div>
                         {countSelected > 0 && (
                           <span className="bg-white text-pink-600 text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black shadow-sm">
@@ -1658,10 +1749,12 @@ export default function App() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {toppings.map(opt => {
                     const isSelected = custToppings.some(t => t.id === opt.id);
+                    const isAvailable = opt.isAvailable !== false;
                     return (
                       <button
                         key={opt.id}
                         type="button"
+                        disabled={!isAvailable}
                         onClick={() => {
                           if (isSelected) {
                             setCustToppings(prev => prev.filter(t => t.id !== opt.id));
@@ -1669,16 +1762,22 @@ export default function App() {
                             setCustToppings(prev => [...prev, opt]);
                           }
                         }}
-                        className={`p-3.5 rounded-2xl border-2 transition flex items-center gap-3 cursor-pointer text-right w-full ${
-                          isSelected
-                            ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-[1.01]'
-                            : 'bg-slate-50 border-slate-200 hover:border-emerald-300 hover:bg-slate-100/50 text-slate-700'
+                        className={`p-3.5 rounded-2xl border-2 transition flex items-center gap-3 text-right w-full relative ${
+                          !isAvailable
+                            ? 'bg-slate-55 border-slate-150 opacity-40 cursor-not-allowed text-slate-400'
+                            : isSelected
+                              ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-[1.01] cursor-pointer'
+                              : 'bg-slate-50 border-slate-200 hover:border-emerald-300 hover:bg-slate-100/50 text-slate-700 cursor-pointer'
                         }`}
                       >
                         <span className="text-2xl shrink-0">{opt.emoji}</span>
                         <div className="min-w-0 flex-1 font-sans text-xs">
                           <span className="font-black block truncate">{opt.name}</span>
-                          <span className="text-[9px] font-bold block opacity-80 font-mono">{opt.price === 0 ? 'مجاناً ✨' : `+${opt.price.toFixed(2)} ر.س`}</span>
+                          {!isAvailable ? (
+                            <span className="text-[9px] font-black block mt-0.5 text-rose-500">غير متوفر ❌</span>
+                          ) : (
+                            <span className="text-[9px] font-bold block opacity-80 font-mono">{opt.price === 0 ? 'مجاناً ✨' : `+${opt.price.toFixed(2)} ر.س`}</span>
+                          )}
                         </div>
                       </button>
                     );
@@ -1869,7 +1968,7 @@ export default function App() {
                 )}
               </button>
 
-              {/* 4. تعديل الأسعار (Fourth) */}
+              {/* 4. الاعدادات (Fourth) */}
               <button
                 onClick={() => setActiveTab('Prices')}
                 className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -1878,8 +1977,8 @@ export default function App() {
                     : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                 }`}
               >
-                <Coins className="w-3.5 h-3.5" />
-                <span>تعديل الأسعار</span>
+                <Settings className="w-3.5 h-3.5" />
+                <span>الاعدادات</span>
               </button>
 
               {/* 5. إعداد الطلب الذاتي / الباركود (Last) */}
@@ -3339,17 +3438,44 @@ export default function App() {
             <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_0px_rgba(30,41,59,0.1)] flex flex-col md:flex-row md:items-center md:justify-between gap-4 font-sans">
               <div>
                 <h2 className="font-sans font-black text-slate-800 text-lg flex items-center gap-2">
-                  <Coins className="w-5 h-5 text-amber-500" />
-                  <span>إدارة وضبط قائمة الأسعار للآيس كريم</span>
+                  <Settings className="w-5 h-5 text-amber-500 animate-spin-slow" />
+                  <span>إعدادات النظام وضبط الأسعار والتوفر للآيس كريم</span>
                 </h2>
-                <p className="text-xs text-slate-400 mt-1.5 font-bold">يمكنك هنا تعديل وتغيير أسعار الأوعية، النكهات، والصلصات التزيينية فوراً. يتم حفظ الميزانية محلياً وتعديل السعر بالريال السعودي.</p>
+                <p className="text-xs text-slate-400 mt-1.5 font-bold">يمكنك هنا إيقاف استقبال الطلبات للموقع بالكامل، تحديد توفر الأوعية، النكهات، والحلويات، وتحديث الأسعار بالريال السعودي فوراً وسحابياً.</p>
               </div>
               <button
                 onClick={handleResetAllPrices}
                 className="text-xs bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 text-amber-700 py-2.5 px-4 rounded-xl font-black transition flex items-center justify-center gap-1.5 cursor-pointer self-start md:self-auto font-sans"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>استعادة الأسعار الافتراضية</span>
+                <span>استعادة النواعم والأسعار الافتراضية</span>
+              </button>
+            </div>
+
+            {/* FULL-SITE ONLINE ORDERS PAUSE CONTROL */}
+            <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_0px_rgba(30,41,59,0.1)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 font-sans">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-2xl ${isOrdersStopped ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                  <Settings className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-850 text-sm">استقبال الطلبات للموقع كاملاً 🌐</h3>
+                  <p className="text-xs text-slate-400 mt-1 font-bold">
+                    {isOrdersStopped 
+                      ? 'تم إيقاف استقبال الطلبات السحابية مؤقتاً للموقع بالكامل من قبل الإدارة.' 
+                      : 'استقبال الطلبات نشط وبخير، يمكن للعملاء إرسال طلباتهم في الزمن الحقيقي.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleToggleOrdersStopped(!isOrdersStopped)}
+                className={`py-2.5 px-6 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 border-2 ${
+                  isOrdersStopped
+                    ? 'bg-rose-500 hover:bg-rose-600 text-white border-rose-600 shadow-sm'
+                    : 'bg-emerald-50 border-emerald-250 text-emerald-600 hover:bg-emerald-100'
+                }`}
+              >
+                <span>{isOrdersStopped ? '🔴 استقبال الطلبات: متوقف' : '🟢 استقبال الطلبات: نشط ومفعّل'}</span>
               </button>
             </div>
 
@@ -3401,6 +3527,21 @@ export default function App() {
                         </div>
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200">
+                        <span className="text-xs font-bold text-slate-550">حالة التوفر:</span>
+                        <button
+                          onClick={() => handleToggleAvailability('container', opt.id, opt.isAvailable !== false)}
+                          className={`px-3 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border ${
+                            opt.isAvailable !== false
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                              : 'bg-rose-50 border-rose-200 text-rose-600'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${opt.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {opt.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -3451,6 +3592,21 @@ export default function App() {
                         </div>
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200">
+                        <span className="text-xs font-bold text-slate-550">حالة التوفر:</span>
+                        <button
+                          onClick={() => handleToggleAvailability('flavor', flavor.id, flavor.isAvailable !== false)}
+                          className={`px-3 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border ${
+                            flavor.isAvailable !== false
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                              : 'bg-rose-50 border-rose-200 text-rose-600'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${flavor.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {flavor.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -3500,6 +3656,21 @@ export default function App() {
                           </button>
                         </div>
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200">
+                        <span className="text-xs font-bold text-slate-550">حالة التوفر:</span>
+                        <button
+                          onClick={() => handleToggleAvailability('topping', topping.id, topping.isAvailable !== false)}
+                          className={`px-3 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border ${
+                            topping.isAvailable !== false
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                              : 'bg-rose-50 border-rose-200 text-rose-600'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${topping.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {topping.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                        </button>
                       </div>
                     </div>
                   ))}

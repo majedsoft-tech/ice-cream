@@ -7,6 +7,7 @@ export interface ContainerOption {
   price: number;
   description: string;
   color: string;
+  isAvailable?: boolean;
 }
 
 export interface FlavorOption {
@@ -16,6 +17,7 @@ export interface FlavorOption {
   price: number; // Add price per scoop/flavor if premium
   color: string; // Used for visual rendering
   emoji: string;
+  isAvailable?: boolean;
 }
 
 export interface ToppingOption {
@@ -25,6 +27,7 @@ export interface ToppingOption {
   price: number;
   category: 'sauce' | 'solid' | 'fruit';
   emoji: string;
+  isAvailable?: boolean;
 }
 
 export interface CartItem {
@@ -75,6 +78,7 @@ export interface OnlineOrder {
   total: number;
   status: 'pending' | 'accepted' | 'prepared' | 'cancelled';
   timestamp: string;
+  createdAt?: number;
   paymentMethod?: 'cash' | 'card';
   bankSubMethod?: string;
 }
