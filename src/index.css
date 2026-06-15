@@ -4,3 +4,130 @@
 @theme {
   --font-sans: "Cairo", "Outfit", ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Print Custom Styles for A4 Paper Layout */
+@media print {
+  /* Set document page size to A4 */
+  @page {
+    size: A4 portrait !important;
+    margin: 15mm 15mm 15mm 15mm !important;
+  }
+
+  /* Force background colors and custom colors to render in the print dialog */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Force clean background of the printed page to pure white */
+  html, body, #root, #root > div {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide app core elements (headers, sidebars, buttons, etc.) */
+  header,
+  footer,
+  aside,
+  nav,
+  button,
+  .no-print,
+  #cart-overlay-button,
+  .toast-notification {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    opacity: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Style and scale the tabletop QR Card design specifically to fill the A4 page beautifully */
+  #customer-qr-card-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 40px auto !important;
+    padding: 45px !important;
+    width: 170mm !important;
+    max-width: 100% !important;
+    height: calc(297mm - 120px) !important;
+    border: 8px solid #0f172a !important; /* Thick solid border frame */
+    border-radius: 40px !important;
+    background-color: #fff9fb !important; /* Soft backdrop */
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Frame of the QR code */
+  #customer-qr-card-container > div {
+    border: 4px solid #0f172a !important;
+    border-radius: 24px !important;
+    padding: 16px !important;
+    background-color: #ffffff !important;
+    box-shadow: none !important;
+    margin-bottom: 20px !important;
+  }
+
+  /* The actual QR Code Image */
+  #customer-qr-card-container img {
+    width: 260px !important;
+    height: 260px !important;
+    display: block !important;
+  }
+
+  /* Floating badge inside center of QR Code */
+  #customer-qr-card-container span.absolute {
+    width: 44px !important;
+    height: 44px !important;
+    border: 3px solid #0f172a !important;
+    border-radius: 12px !important;
+    font-size: 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background-color: #ffffff !important;
+  }
+
+  /* Description Badges and Typography scaled for premium A4 flyers */
+  #customer-qr-card-container span.bg-pink-100 {
+    font-size: 14px !important;
+    font-weight: 950 !important;
+    padding: 8px 18px !important;
+    border-radius: 9999px !important;
+    background-color: #fce7f3 !important;
+    color: #db2777 !important;
+    display: inline-block !important;
+    margin-top: 10px !important;
+  }
+
+  #customer-qr-card-container h4 {
+    font-size: 26px !important;
+    font-weight: 950 !important;
+    color: #0f172a !important;
+    margin-top: 20px !important;
+    margin-bottom: 20px !important;
+    line-height: 1.4 !important;
+  }
+
+  #customer-qr-card-container span.font-mono {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    background-color: #f8fafc !important;
+    border: 2px solid #e2e8f0 !important;
+    padding: 10px 16px !important;
+    border-radius: 12px !important;
+    display: block !important;
+    text-align: center !important;
+  }
+}
