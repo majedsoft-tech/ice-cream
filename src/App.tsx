@@ -2927,7 +2927,7 @@ export default function App() {
           <div className="space-y-6">
             
             {/* LINK INFORMATION CARD */}
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-3xl p-6 border-4 border-emerald-700 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col md:flex-row items-center justify-between gap-6 print:hidden">
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-3xl p-6 border-4 border-emerald-700 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col md:flex-row items-center justify-between gap-6">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="text-3xl">🔗</span>
@@ -2951,11 +2951,11 @@ export default function App() {
             </div>
 
             {/* PREPARATION BANNER & DESK DISPLAY CARD FOR CUSTOMERS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:block print:w-full print:max-w-2xl print:mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
-              <div className="bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col items-center text-center space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:w-full">
-                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center text-3xl print:hidden">📱</div>
-                <div className="space-y-2 print:hidden">
+              <div className="bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] flex flex-col items-center text-center space-y-6">
+                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center text-3xl">📱</div>
+                <div className="space-y-2">
                   <h3 className="text-lg font-black text-slate-800">بطاقة طاولة الكاونتر الذكية 🍦</h3>
                   <p className="text-xs text-slate-400 font-bold max-w-md leading-relaxed">
                     قم بفتح هذه الشاشة على تابلت جانبي أو لافتة عند كاونتر الاستلام. يسهل للعملاء تصفح المنيو وتجهيز أكوابهم دون طابور الانتظار!
@@ -2963,8 +2963,8 @@ export default function App() {
                 </div>
                 
                 {/* DYNAMIC REAL QR CODE DESIGN */}
-                <div id="customer-qr-card-container" className="border-4 border-dashed border-pink-400 p-6 rounded-3xl bg-pink-50/30 w-full max-w-xs space-y-4 flex flex-col items-center print:border-solid print:my-4">
-                  <div className="relative p-3 bg-white border-4 border-slate-800 rounded-2xl shadow-md overflow-hidden group print:transform print:none">
+                <div id="customer-qr-card-container" className="border-4 border-dashed border-pink-400 p-6 rounded-3xl bg-pink-50/30 w-full max-w-xs space-y-4 flex flex-col items-center">
+                  <div className="relative p-3 bg-white border-4 border-slate-800 rounded-2xl shadow-md overflow-hidden group">
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.origin + window.location.pathname)}`}
                       alt="حجّز طلبك أونلاين"
@@ -2984,14 +2984,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="bg-slate-800 hover:bg-slate-900 border-b-4 border-slate-950 text-white font-black text-xs py-3 px-6 rounded-xl transition cursor-pointer flex items-center gap-1.5 print:hidden"
+                  className="bg-slate-800 hover:bg-slate-900 border-b-4 border-slate-950 text-white font-black text-xs py-3 px-6 rounded-xl transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Printer className="w-4 h-4" />
                   <span>طباعة باركود كود الطاولة للعملاء 🖨️</span>
                 </button>
               </div>
 
-              <div className="bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6 print:hidden">
+              <div className="bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6">
                 <div className="flex items-center gap-3 border-b-2 border-slate-200 pb-4 font-sans">
                   <span className="text-2xl">⚡</span>
                   <div>
