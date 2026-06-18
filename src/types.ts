@@ -1,4 +1,4 @@
-export type ContainerType = 'cone' | 'cup';
+export type ContainerType = string;
 
 export interface ContainerOption {
   id: ContainerType;
@@ -7,6 +7,7 @@ export interface ContainerOption {
   price: number;
   description: string;
   color: string;
+  emoji?: string;
   isAvailable?: boolean;
 }
 

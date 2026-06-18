@@ -78,6 +78,27 @@ export default function App() {
   });
 
   const [isOrdersStopped, setIsOrdersStopped] = useState<boolean>(false);
+
+  // States for adding customizable items
+  const [showAddContainerForm, setShowAddContainerForm] = useState(false);
+  const [newContainerName, setNewContainerName] = useState('');
+  const [newContainerNameEn, setNewContainerNameEn] = useState('');
+  const [newContainerPrice, setNewContainerPrice] = useState('');
+  const [newContainerDesc, setNewContainerDesc] = useState('');
+  const [newContainerEmoji, setNewContainerEmoji] = useState('🍧');
+
+  const [showAddFlavorForm, setShowAddFlavorForm] = useState(false);
+  const [newFlavorName, setNewFlavorName] = useState('');
+  const [newFlavorNameEn, setNewFlavorNameEn] = useState('');
+  const [newFlavorPrice, setNewFlavorPrice] = useState('');
+  const [newFlavorEmoji, setNewFlavorEmoji] = useState('🍦');
+
+  const [showAddToppingForm, setShowAddToppingForm] = useState(false);
+  const [newToppingName, setNewToppingName] = useState('');
+  const [newToppingNameEn, setNewToppingNameEn] = useState('');
+  const [newToppingPrice, setNewToppingPrice] = useState('');
+  const [newToppingCategory, setNewToppingCategory] = useState<'solid' | 'sauce' | 'fruit'>('solid');
+  const [newToppingEmoji, setNewToppingEmoji] = useState('🍒');
   
   // Current Item Configuration State
   const [selectedContainer, setSelectedContainer] = useState<ContainerOption>(() => {
@@ -226,6 +247,104 @@ export default function App() {
       }).catch(err => {
         console.error("Error resetting pricing:", err);
         triggerNotice('حدث خطأ أثناء إعادة تعيين الأسعار بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    }
+  };
+
+  const handleAddItem = (category: 'container' | 'flavor' | 'topping', newItem: any) => {
+    if (category === 'container') {
+      const updated = [...containers, newItem];
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers: updated,
+        flavors,
+        toppings
+      }, { merge: true }).then(() => {
+        triggerNotice('تم إضافة الوعاء الجديد بنجاح!', 'success');
+      }).catch(err => {
+        console.error("Error adding item:", err);
+        triggerNotice('حدث خطأ أثناء الإضافة بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'flavor') {
+      const updated = [...flavors, newItem];
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers,
+        flavors: updated,
+        toppings
+      }, { merge: true }).then(() => {
+        triggerNotice('تم إضافة النكهة الجديدة بنجاح!', 'success');
+      }).catch(err => {
+        console.error("Error adding item:", err);
+        triggerNotice('حدث خطأ أثناء الإضافة بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'topping') {
+      const updated = [...toppings, newItem];
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers,
+        flavors,
+        toppings: updated
+      }, { merge: true }).then(() => {
+        triggerNotice('تم إضافة الإضافة الجديدة بنجاح!', 'success');
+      }).catch(err => {
+        console.error("Error adding item:", err);
+        triggerNotice('حدث خطأ أثناء الإضافة بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    }
+  };
+
+  const handleDeleteItem = (category: 'container' | 'flavor' | 'topping', id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا العنصر؟')) return;
+
+    if (category === 'container') {
+      if (containers.length <= 1) {
+        triggerNotice('يجب توفر وعاء تقديم واحد على الأقل في النظام!', 'error');
+        return;
+      }
+      const updated = containers.filter(c => c.id !== id);
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers: updated,
+        flavors,
+        toppings
+      }, { merge: true }).then(() => {
+        if (selectedContainer.id === id) {
+          const firstAvailable = updated[0];
+          if (firstAvailable) setSelectedContainer(firstAvailable);
+        }
+        triggerNotice('تم حذف الوعاء بنجاح!', 'success');
+      }).catch(err => {
+        console.error("Error deleting item:", err);
+        triggerNotice('حدث خطأ أثناء الحذف بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'flavor') {
+      const updated = flavors.filter(f => f.id !== id);
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers,
+        flavors: updated,
+        toppings
+      }, { merge: true }).then(() => {
+        setSelectedFlavors(prev => prev.filter(p => p.id !== id));
+        triggerNotice('تم حذف النكهة بنجاح!', 'success');
+      }).catch(err => {
+        console.error("Error deleting item:", err);
+        triggerNotice('حدث خطأ أثناء الحذف بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'topping') {
+      const updated = toppings.filter(t => t.id !== id);
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers,
+        flavors,
+        toppings: updated
+      }, { merge: true }).then(() => {
+        setSelectedToppings(prev => prev.filter(p => p.id !== id));
+        triggerNotice('تم حذف الإضافة بنجاح!', 'success');
+      }).catch(err => {
+        console.error("Error deleting item:", err);
+        triggerNotice('حدث خطأ أثناء الحذف بالخادم.', 'error');
         handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
       });
     }
@@ -1626,7 +1745,7 @@ export default function App() {
                               : 'bg-white border-slate-200 opacity-80 hover:opacity-100 cursor-pointer'
                         }`}
                       >
-                        <span className="text-5xl">{opt.id === 'cone' ? '🍦' : '🍨'}</span>
+                        <span className="text-5xl">{opt.emoji || (opt.id === 'cone' ? '🍦' : '🍨')}</span>
                         <div>
                           <span className="text-base font-black text-slate-800 block">{opt.name}</span>
                           <span className="text-[10px] text-slate-400 font-bold block mt-1 leading-relaxed">{opt.description}</span>
@@ -2009,7 +2128,7 @@ export default function App() {
                         }`}
                         id={`container-opt-${opt.id}`}
                       >
-                        <span className="text-6xl">{opt.id === 'cone' ? '🍦' : '🍨'}</span>
+                        <span className="text-6xl">{opt.emoji || (opt.id === 'cone' ? '🍦' : '🍨')}</span>
                         <div className="text-center">
                           <span className="text-xl font-black text-slate-800 block">{opt.name}</span>
                           <span className="text-[11px] text-slate-400 font-bold block mt-1 leading-relaxed">{opt.description}</span>
@@ -2411,7 +2530,7 @@ export default function App() {
                               className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 flex items-start gap-3 relative group"
                             >
                               <div className="w-10 h-10 rounded-xl bg-pink-500 text-white flex flex-col items-center justify-center text-xl shadow shrink-0">
-                                {item.container.id === 'cone' ? '🍦' : '🍨'}
+                                {item.container.emoji || (item.container.id === 'cone' ? '🍦' : '🍨')}
                               </div>
 
                               <div className="flex-1 min-w-0">
@@ -3444,15 +3563,15 @@ export default function App() {
                   {containers.map((opt) => (
                     <div key={opt.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3">
                       <div className="flex items-center gap-3">
-                        <span className="text-3xl select-none">{opt.id === 'cone' ? '🍦' : '🍨'}</span>
+                        <span className="text-3xl select-none">{opt.emoji || (opt.id === 'cone' ? '🍦' : '🍨')}</span>
                         <div className="min-w-0 flex-1">
                           <h4 className="text-xs font-black text-slate-800 truncate">{opt.name}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold block">{opt.id === 'cone' ? 'Cone' : 'Cup'}</span>
+                          <span className="text-[10px] text-slate-400 font-bold block">{opt.nameEn}</span>
                         </div>
                       </div>
                       
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-500 shrink-0">السعر:</span>
+                        <span className="text-xs font-bold text-slate-550 shrink-0">السعر:</span>
                         <div className="flex items-center bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-inner flex-1">
                           <button
                             onClick={() => handleUpdatePrice('container', opt.id, Math.max(0, opt.price - 0.5))}
@@ -3480,11 +3599,18 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200">
-                        <span className="text-xs font-bold text-slate-550">حالة التوفر:</span>
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2">
+                        <button
+                          onClick={() => handleDeleteItem('container', opt.id)}
+                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer"
+                          title="حذف هذا الوعاء"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
                         <button
                           onClick={() => handleToggleAvailability('container', opt.id, opt.isAvailable !== false)}
-                          className={`px-3 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border ${
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
                             opt.isAvailable !== false
                               ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                               : 'bg-rose-50 border-rose-200 text-rose-600'
@@ -3496,6 +3622,119 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+
+                  {/* ADD CONTAINER FORM INLINE CONTROL */}
+                  {!showAddContainerForm ? (
+                    <button
+                      onClick={() => setShowAddContainerForm(true)}
+                      className="w-full py-3 border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50/10 text-slate-400 hover:text-pink-600 rounded-2xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-1.5 mt-2"
+                    >
+                      <span>➕ إضافة وعاء تقديم جديد</span>
+                    </button>
+                  ) : (
+                    <div className="bg-pink-50/20 border-2 border-pink-200 rounded-2xl p-4 space-y-3 font-sans">
+                      <div className="flex items-center justify-between border-b border-pink-100 pb-2">
+                        <span className="text-xs font-black text-pink-600">إضافة وعاء جديد 🍦</span>
+                        <button
+                          onClick={() => setShowAddContainerForm(false)}
+                          className="text-[10px] text-slate-400 hover:text-rose-600 font-bold"
+                        >
+                          إلغاء ×
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-550 block mb-1">الاسم بالعربية:</label>
+                          <input
+                            type="text"
+                            placeholder="مثال: كوب عملاق"
+                            value={newContainerName}
+                            onChange={(e) => setNewContainerName(e.target.value)}
+                            className="w-full text-xs font-bold border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                          />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-550 block mb-1">الاسم بالإنجليزي:</label>
+                            <input
+                              type="text"
+                              placeholder="Giant Cup"
+                              value={newContainerNameEn}
+                              onChange={(e) => setNewContainerNameEn(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-550 block mb-1">السعر (ر.س):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              placeholder="7.5"
+                              value={newContainerPrice}
+                              onChange={(e) => setNewContainerPrice(e.target.value)}
+                              className="w-full text-xs font-mono border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-1">
+                            <label className="text-[10px] font-bold text-slate-550 block mb-1">إيموجي:</label>
+                            <input
+                              type="text"
+                              placeholder="🍨"
+                              value={newContainerEmoji}
+                              onChange={(e) => setNewContainerEmoji(e.target.value)}
+                              className="w-full text-center text-sm border border-slate-200 rounded-xl px-1.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="text-[10px] font-bold text-slate-550 block mb-1">الوصف:</label>
+                            <input
+                              type="text"
+                              placeholder="حجم كبير للعوائم"
+                              value={newContainerDesc}
+                              onChange={(e) => setNewContainerDesc(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (!newContainerName || !newContainerNameEn || !newContainerPrice) {
+                            triggerNotice('يرجى ملء جميع الحقول المطلوبة لوعاء التقديم!', 'error');
+                            return;
+                          }
+                          const id = 'custom-' + Date.now();
+                          const newItem = {
+                            id,
+                            name: newContainerName,
+                            nameEn: newContainerNameEn,
+                            price: parseFloat(newContainerPrice) || 0,
+                            description: newContainerDesc || 'وعاء تقديم إضافي مميز لموقعك.',
+                            color: '#FFE4E6',
+                            emoji: newContainerEmoji,
+                            isAvailable: true
+                          };
+                          handleAddItem('container', newItem);
+                          setNewContainerName('');
+                          setNewContainerNameEn('');
+                          setNewContainerPrice('');
+                          setNewContainerDesc('');
+                          setNewContainerEmoji('🍧');
+                          setShowAddContainerForm(false);
+                        }}
+                        className="w-full py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-black rounded-xl transition cursor-pointer text-center"
+                      >
+                        إضافة الوعاء سحابياً 💾
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3517,7 +3756,7 @@ export default function App() {
                       </div>
                       
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-500 shrink-0">السعر الإضافي:</span>
+                        <span className="text-xs font-bold text-slate-550 shrink-0">السعر الإضافي:</span>
                         <div className="flex items-center bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-inner flex-1">
                           <button
                             onClick={() => handleUpdatePrice('flavor', flavor.id, Math.max(0, flavor.price - 0.5))}
@@ -3545,11 +3784,18 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200">
-                        <span className="text-xs font-bold text-slate-550">حالة التوفر:</span>
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2">
+                        <button
+                          onClick={() => handleDeleteItem('flavor', flavor.id)}
+                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer"
+                          title="حذف هذه النكهة"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
                         <button
                           onClick={() => handleToggleAvailability('flavor', flavor.id, flavor.isAvailable !== false)}
-                          className={`px-3 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border ${
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
                             flavor.isAvailable !== false
                               ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                               : 'bg-rose-50 border-rose-200 text-rose-600'
@@ -3561,6 +3807,291 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+
+                  {/* ADD FLAVOR FORM INLINE CONTROL */}
+                  {!showAddFlavorForm ? (
+                    <button
+                      onClick={() => setShowAddFlavorForm(true)}
+                      className="w-full py-3 border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50/10 text-slate-400 hover:text-pink-600 rounded-2xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-1.5 mt-2"
+                    >
+                      <span>➕ إضافة نكهة آيس كريم جديدة</span>
+                    </button>
+                  ) : (
+                    <div className="bg-pink-50/20 border-2 border-pink-200 rounded-2xl p-4 space-y-3 font-sans">
+                      <div className="flex items-center justify-between border-b border-pink-100 pb-2">
+                        <span className="text-xs font-black text-pink-600">إضافة نكهة جديدة 🍦</span>
+                        <button
+                          onClick={() => setShowAddFlavorForm(false)}
+                          className="text-[10px] text-slate-400 hover:text-rose-600 font-bold"
+                        >
+                          إلغاء ×
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-555 block mb-1">اسم النكهة (بالعربية):</label>
+                          <input
+                            type="text"
+                            placeholder="مثال: فستق بالهيل"
+                            value={newFlavorName}
+                            onChange={(e) => setNewFlavorName(e.target.value)}
+                            className="w-full text-xs font-bold border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">الاسم بالإنجليزي:</label>
+                            <input
+                              type="text"
+                              placeholder="Pistachio Cardamom"
+                              value={newFlavorNameEn}
+                              onChange={(e) => setNewFlavorNameEn(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">السعر الإضافي (ر.س):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              placeholder="0.0"
+                              value={newFlavorPrice}
+                              onChange={(e) => setNewFlavorPrice(e.target.value)}
+                              className="w-full text-xs font-mono border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-555 block mb-1">رمز إيموجي (Emoji):</label>
+                          <input
+                            type="text"
+                            placeholder="🍦"
+                            value={newFlavorEmoji}
+                            onChange={(e) => setNewFlavorEmoji(e.target.value)}
+                            className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (!newFlavorName || !newFlavorNameEn || newFlavorPrice === '') {
+                            triggerNotice('يرجى ملء جميع الحقول المطلوبة للنكهة!', 'error');
+                            return;
+                          }
+                          const id = 'flavor-' + Date.now();
+                          const newItem = {
+                            id,
+                            name: newFlavorName,
+                            nameEn: newFlavorNameEn,
+                            price: parseFloat(newFlavorPrice) || 0,
+                            color: '#FDF2F8',
+                            emoji: newFlavorEmoji || '🍦',
+                            isAvailable: true
+                          };
+                          handleAddItem('flavor', newItem);
+                          setNewFlavorName('');
+                          setNewFlavorNameEn('');
+                          setNewFlavorPrice('');
+                          setNewFlavorEmoji('🍦');
+                          setShowAddFlavorForm(false);
+                        }}
+                        className="w-full py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-black rounded-xl transition cursor-pointer text-center"
+                      >
+                        إضافة النكهة سحابياً 💾
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* CATEGORY 3: TOPPINGS */}
+              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                <h3 className="font-black text-slate-800 text-sm border-r-4 border-pink-500 pr-2 pb-1 flex items-center justify-between">
+                  <span>3. إضافات الزينة والصلصات</span>
+                  <span className="text-xs text-slate-400 font-bold">({toppings.length} إضافات)</span>
+                </h3>
+                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                  {toppings.map((topping) => (
+                    <div key={topping.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3 font-sans">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl select-none">{topping.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-black text-slate-800 truncate">{topping.name}</h4>
+                          <span className="text-[10px] text-slate-400 font-bold block">{topping.nameEn} • {topping.category === 'solid' ? 'جامد' : topping.category === 'sauce' ? 'وافل وصوص' : 'فواكه'}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-550 shrink-0">السعر:</span>
+                        <div className="flex items-center bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-inner flex-1">
+                          <button
+                            onClick={() => handleUpdatePrice('topping', topping.id, Math.max(0, topping.price - 0.5))}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black w-8 h-8 flex items-center justify-center transition active:scale-95"
+                            title="ناقص 0.5 ريال"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={topping.price}
+                            onChange={(e) => handleUpdatePrice('topping', topping.id, parseFloat(e.target.value) || 0)}
+                            className="w-full text-center text-xs font-black font-mono text-slate-800 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => handleUpdatePrice('topping', topping.id, topping.price + 0.5)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black w-8 h-8 flex items-center justify-center transition active:scale-95"
+                            title="زائد 0.5 ريال"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="text-xs font-bold text-slate-400">ر.س</span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2">
+                        <button
+                          onClick={() => handleDeleteItem('topping', topping.id)}
+                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer"
+                          title="حذف هذه الإضافة"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleAvailability('topping', topping.id, topping.isAvailable !== false)}
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                            topping.isAvailable !== false
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                              : 'bg-rose-50 border-rose-200 text-rose-600'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${topping.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {topping.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* ADD TOPPING FORM INLINE CONTROL */}
+                  {!showAddToppingForm ? (
+                    <button
+                      onClick={() => setShowAddToppingForm(true)}
+                      className="w-full py-3 border-2 border-dashed border-slate-300 hover:border-pink-500 hover:bg-pink-50/10 text-slate-400 hover:text-pink-600 rounded-2xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-1.5 mt-2"
+                    >
+                      <span>➕ إضافة زينة أو صوص جديد</span>
+                    </button>
+                  ) : (
+                    <div className="bg-pink-50/20 border-2 border-pink-200 rounded-2xl p-4 space-y-3 font-sans">
+                      <div className="flex items-center justify-between border-b border-pink-100 pb-2">
+                        <span className="text-xs font-black text-pink-600">إضافة زينة/صلصة جديدة ✨</span>
+                        <button
+                          onClick={() => setShowAddToppingForm(false)}
+                          className="text-[10px] text-slate-400 hover:text-rose-600 font-bold"
+                        >
+                          إلغاء ×
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-550 block mb-1">اسم الإضافة (بالعربية):</label>
+                          <input
+                            type="text"
+                            placeholder="مثال: لوز محمص"
+                            value={newToppingName}
+                            onChange={(e) => setNewToppingName(e.target.value)}
+                            className="w-full text-xs font-bold border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">الاسم بالإنجليزي:</label>
+                            <input
+                              type="text"
+                              placeholder="Roasted Almonds"
+                              value={newToppingNameEn}
+                              onChange={(e) => setNewToppingNameEn(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">السعر (ر.س):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              placeholder="1.5"
+                              value={newToppingPrice}
+                              onChange={(e) => setNewToppingPrice(e.target.value)}
+                              className="w-full text-xs font-mono border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">نوع التصنيف:</label>
+                            <select
+                              value={newToppingCategory}
+                              onChange={(e) => setNewToppingCategory(e.target.value as any)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            >
+                              <option value="solid">جامد (مكسرات/حلوى)</option>
+                              <option value="sauce">وافل وصوص (سائل)</option>
+                              <option value="fruit">فواكه وخمائر</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">رمز إيموجي (Emoji):</label>
+                            <input
+                              type="text"
+                              placeholder="🌰"
+                              value={newToppingEmoji}
+                              onChange={(e) => setNewToppingEmoji(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white text-center"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (!newToppingName || !newToppingNameEn || newToppingPrice === '') {
+                            triggerNotice('يرجى ملء جميع الحقول المطلوبة للإضافة!', 'error');
+                            return;
+                          }
+                          const id = 'topping-' + Date.now();
+                          const newItem = {
+                            id,
+                            name: newToppingName,
+                            nameEn: newToppingNameEn,
+                            price: parseFloat(newToppingPrice) || 0,
+                            category: newToppingCategory,
+                            emoji: newToppingEmoji || '🍒',
+                            isAvailable: true
+                          };
+                          handleAddItem('topping', newItem);
+                          setNewToppingName('');
+                          setNewToppingNameEn('');
+                          setNewToppingPrice('');
+                          setNewToppingEmoji('🍒');
+                          setNewToppingCategory('solid');
+                          setShowAddToppingForm(false);
+                        }}
+                        className="w-full py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-black rounded-xl transition cursor-pointer text-center"
+                      >
+                        إضافة الزينة سحابياً 💾
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
