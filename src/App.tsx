@@ -499,6 +499,16 @@ export default function App() {
     }
   });
 
+  const [prevCustomerOrderStatus, setPrevCustomerOrderStatus] = useState<string | null>(null);
+
+  // Trigger custom chime sound when the customer's active order becomes prepared (ready)
+  useEffect(() => {
+    if (activeCustomerOrder?.status === 'prepared' && prevCustomerOrderStatus !== 'prepared') {
+      playCustomerAlertChime();
+    }
+    setPrevCustomerOrderStatus(activeCustomerOrder?.status || null);
+  }, [activeCustomerOrder?.status, prevCustomerOrderStatus]);
+
   // Countdown timer effect for auto-received transition
   useEffect(() => {
     if (recentOnlineOrderId && activeCustomerOrder && activeCustomerOrder.status === 'prepared') {
@@ -788,6 +798,41 @@ export default function App() {
       osc.stop(audioCtx.currentTime + 0.45);
     } catch (e) {
       console.log("Audio feedback blocked:", e);
+    }
+  };
+
+  // Modern Web Audio API melody chime specifically for clients when order status changes to prepared.
+  // This uses a softer triangle-wave arpeggio that feels magical, celebratory, and distinct.
+  const playCustomerAlertChime = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      
+      const notes = [523.25, 659.25, 783.99, 987.77]; // C5, E5, G5, B5 (Warm Major 7th arpeggio)
+      const duration = 0.25;
+      const gap = 0.12;
+      
+      notes.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.type = 'triangle'; // Triangle waves sound like a xylophone/music box
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * gap);
+        
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime + idx * gap);
+        gainNode.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + idx * gap + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * gap + duration);
+        
+        osc.start(audioCtx.currentTime + idx * gap);
+        osc.stop(audioCtx.currentTime + idx * gap + duration + 0.05);
+      });
+    } catch (e) {
+      console.log("Customer audio feedback blocked:", e);
     }
   };
 
