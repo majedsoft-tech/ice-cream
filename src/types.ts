@@ -9,6 +9,8 @@ export interface ContainerOption {
   color: string;
   emoji?: string;
   isAvailable?: boolean;
+  isHidden?: boolean;
+  imageUrl?: string;
 }
 
 export interface FlavorOption {
@@ -19,6 +21,8 @@ export interface FlavorOption {
   color: string; // Used for visual rendering
   emoji: string;
   isAvailable?: boolean;
+  isHidden?: boolean;
+  imageUrl?: string;
 }
 
 export interface ToppingOption {
@@ -29,6 +33,8 @@ export interface ToppingOption {
   category: 'sauce' | 'solid' | 'fruit';
   emoji: string;
   isAvailable?: boolean;
+  isHidden?: boolean;
+  imageUrl?: string;
 }
 
 export interface CartItem {

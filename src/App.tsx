@@ -86,12 +86,14 @@ export default function App() {
   const [newContainerPrice, setNewContainerPrice] = useState('');
   const [newContainerDesc, setNewContainerDesc] = useState('');
   const [newContainerEmoji, setNewContainerEmoji] = useState('🍧');
+  const [newContainerImageUrl, setNewContainerImageUrl] = useState('');
 
   const [showAddFlavorForm, setShowAddFlavorForm] = useState(false);
   const [newFlavorName, setNewFlavorName] = useState('');
   const [newFlavorNameEn, setNewFlavorNameEn] = useState('');
   const [newFlavorPrice, setNewFlavorPrice] = useState('');
   const [newFlavorEmoji, setNewFlavorEmoji] = useState('🍦');
+  const [newFlavorImageUrl, setNewFlavorImageUrl] = useState('');
 
   const [showAddToppingForm, setShowAddToppingForm] = useState(false);
   const [newToppingName, setNewToppingName] = useState('');
@@ -99,6 +101,82 @@ export default function App() {
   const [newToppingPrice, setNewToppingPrice] = useState('');
   const [newToppingCategory, setNewToppingCategory] = useState<'solid' | 'sauce' | 'fruit'>('solid');
   const [newToppingEmoji, setNewToppingEmoji] = useState('🍒');
+  const [newToppingImageUrl, setNewToppingImageUrl] = useState('');
+  
+  // States for Editing Names / Details of Items
+  const [editingItemType, setEditingItemType] = useState<'container' | 'flavor' | 'topping' | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editNameAr, setEditNameAr] = useState<string>('');
+  const [editNameEn, setEditNameEn] = useState<string>('');
+  const [editEmoji, setEditEmoji] = useState<string>('');
+
+  const handleStartItemEdit = (type: 'container' | 'flavor' | 'topping', item: any) => {
+    setEditingItemType(type);
+    setEditingItemId(item.id);
+    setEditNameAr(item.name);
+    setEditNameEn(item.nameEn);
+    setEditEmoji(item.emoji || '');
+  };
+
+  const handleCancelItemEdit = () => {
+    setEditingItemId(null);
+    setEditingItemType(null);
+    setEditNameAr('');
+    setEditNameEn('');
+    setEditEmoji('');
+  };
+
+  const handleSaveItemEdit = () => {
+    if (!editingItemType || !editingItemId) return;
+    if (!editNameAr.trim() || !editNameEn.trim()) {
+      triggerNotice('يرجى كتابة الاسم بالعربية وبالإنجليزية!', 'error');
+      return;
+    }
+
+    if (editingItemType === 'container') {
+      const updated = containers.map(c => c.id === editingItemId ? { ...c, name: editNameAr.trim(), nameEn: editNameEn.trim(), emoji: editEmoji.trim() || c.emoji } : c);
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers: updated
+      }, { merge: true }).then(() => {
+        setSelectedContainer(prev => {
+          const fresh = updated.find(c => c.id === prev.id);
+          return fresh ? fresh : prev;
+        });
+        triggerNotice('تم تحديث بيانات الوعاء بنجاح سحابياً!', 'success');
+        handleCancelItemEdit();
+      }).catch(err => {
+        console.error("Error updating item name:", err);
+        triggerNotice('حدث خطأ أثناء تحديث الاسم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (editingItemType === 'flavor') {
+      const updated = flavors.map(f => f.id === editingItemId ? { ...f, name: editNameAr.trim(), nameEn: editNameEn.trim(), emoji: editEmoji.trim() || f.emoji } : f);
+      setDoc(doc(db, 'settings', 'prices'), {
+        flavors: updated
+      }, { merge: true }).then(() => {
+        setSelectedFlavors(prev => prev.map(p => updated.find(u => u.id === p.id) || p));
+        triggerNotice('تم تحديث بيانات النكهة بنجاح سحابياً!', 'success');
+        handleCancelItemEdit();
+      }).catch(err => {
+        console.error("Error updating flavor name:", err);
+        triggerNotice('حدث خطأ أثناء تحديث الاسم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (editingItemType === 'topping') {
+      const updated = toppings.map(t => t.id === editingItemId ? { ...t, name: editNameAr.trim(), nameEn: editNameEn.trim(), emoji: editEmoji.trim() || t.emoji } : t);
+      setDoc(doc(db, 'settings', 'prices'), {
+        toppings: updated
+      }, { merge: true }).then(() => {
+        setSelectedToppings(prev => prev.map(p => updated.find(u => u.id === p.id) || p));
+        triggerNotice('تم تحديث بيانات الإضافة بنجاح سحابياً!', 'success');
+        handleCancelItemEdit();
+      }).catch(err => {
+        console.error("Error updating topping name:", err);
+        triggerNotice('حدث خطأ أثناء تحديث الاسم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    }
+  };
   
   // Current Item Configuration State
   const [selectedContainer, setSelectedContainer] = useState<ContainerOption>(() => {
@@ -228,6 +306,44 @@ export default function App() {
       }).catch(err => {
         console.error("Error setting availability:", err);
         triggerNotice('حدث خطأ أثناء تحديث التوفر بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    }
+  };
+
+  const handleToggleHidden = (category: 'container' | 'flavor' | 'topping', id: string, currentVal: boolean) => {
+    const newVal = !currentVal;
+    if (category === 'container') {
+      const updated = containers.map(c => c.id === id ? { ...c, isHidden: newVal } : c);
+      setDoc(doc(db, 'settings', 'prices'), {
+        containers: updated
+      }, { merge: true }).then(() => {
+        triggerNotice(`تم تحديث حالة ظهور الوعاء بنجاح!`, 'success');
+      }).catch(err => {
+        console.error("Error setting hidden state:", err);
+        triggerNotice('حدث خطأ أثناء تحديث ظهور الوعاء بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'flavor') {
+      const updated = flavors.map(f => f.id === id ? { ...f, isHidden: newVal } : f);
+      setDoc(doc(db, 'settings', 'prices'), {
+        flavors: updated
+      }, { merge: true }).then(() => {
+        triggerNotice(`تم تحديث حالة ظهور النكهة بنجاح!`, 'success');
+      }).catch(err => {
+        console.error("Error setting hidden state:", err);
+        triggerNotice('حدث خطأ أثناء تحديث ظهور النكهة بالخادم.', 'error');
+        handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
+      });
+    } else if (category === 'topping') {
+      const updated = toppings.map(t => t.id === id ? { ...t, isHidden: newVal } : t);
+      setDoc(doc(db, 'settings', 'prices'), {
+        toppings: updated
+      }, { merge: true }).then(() => {
+        triggerNotice(`تم تحديث حالة ظهور الإضافة بنجاح!`, 'success');
+      }).catch(err => {
+        console.error("Error setting hidden state:", err);
+        triggerNotice('حدث خطأ أثناء تحديث ظهور الإضافة بالخادم.', 'error');
         handleFirestoreError(err, OperationType.WRITE, 'settings/prices');
       });
     }
@@ -372,6 +488,40 @@ export default function App() {
   const [custPaymentMethod, setCustPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [custBankSubMethod, setCustBankSubMethod] = useState<string>('stc');
 
+  // Customer tracking & completed orders states
+  const [preparedCountdown, setPreparedCountdown] = useState<number | null>(null);
+  const [showPastOrders, setShowPastOrders] = useState<boolean>(false);
+  const [myPastOrders, setMyPastOrders] = useState<OnlineOrder[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('my_past_orders_list') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  // Countdown timer effect for auto-received transition
+  useEffect(() => {
+    if (recentOnlineOrderId && activeCustomerOrder && activeCustomerOrder.status === 'prepared') {
+      if (preparedCountdown === null) {
+        setPreparedCountdown(10);
+      }
+    } else {
+      setPreparedCountdown(null);
+    }
+  }, [recentOnlineOrderId, activeCustomerOrder?.status]);
+
+  useEffect(() => {
+    if (preparedCountdown === null) return;
+    if (preparedCountdown <= 0) {
+      handleMarkOrderAsReceived();
+      return;
+    }
+    const interval = setInterval(() => {
+      setPreparedCountdown(prev => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [preparedCountdown]);
+
   // Dynamic customer customization options
   const [custContainer, setCustContainer] = useState<ContainerOption | null>(null);
   const [custFlavors, setCustFlavors] = useState<FlavorOption[]>([]);
@@ -379,6 +529,15 @@ export default function App() {
   const [custQuantity, setCustQuantity] = useState<number>(1);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState<boolean>(false);
+  const [isCartGlowing, setIsCartGlowing] = useState<boolean>(false);
+  const [showCustAddConfirmModal, setShowCustAddConfirmModal] = useState<boolean>(false);
+  const [lastAddedCustItem, setLastAddedCustItem] = useState<CartItem | null>(null);
+
+  useEffect(() => {
+    if (customerCart.length === 0) {
+      setIsCartGlowing(false);
+    }
+  }, [customerCart.length]);
 
   useEffect(() => {
     if (containers.length > 0 && custContainer) {
@@ -1039,6 +1198,14 @@ export default function App() {
 
     setCustomerCart((prev) => [...prev, newItem]);
     
+    // Set confirmation and visual feedback states
+    setLastAddedCustItem(newItem);
+    setShowCustAddConfirmModal(true);
+    setIsCartGlowing(true);
+    
+    // Smoothly scroll to the beginning/top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     // Clear customizer state for next item configuration
     setCustContainer(null);
     setCustFlavors([]);
@@ -1131,6 +1298,34 @@ export default function App() {
       triggerNotice('خطأ أثناء إلغاء الطلب السحابي.', 'error');
     }
   };
+
+  function handleMarkOrderAsReceived() {
+    if (activeCustomerOrder) {
+      setMyPastOrders(prev => {
+        const updated = [activeCustomerOrder, ...prev.filter(o => o.id !== activeCustomerOrder.id)];
+        localStorage.setItem('my_past_orders_list', JSON.stringify(updated));
+        return updated;
+      });
+    }
+    localStorage.removeItem('recent_online_order_id');
+    setRecentOnlineOrderId(null);
+    setActiveCustomerOrder(null);
+    setSelfCustomerName('');
+    setPreparedCountdown(null);
+    setIsCartOpen(false);
+    setShowPastOrders(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    triggerNotice('تم استلام طلبك ومسحه وإضافته لسجل طلباتك المستلمة بنجاح! شكراً لك 🍦', 'success');
+  }
+
+  function handleDeletePastOrder(orderId: string) {
+    setMyPastOrders(prev => {
+      const updated = prev.filter(o => o.id !== orderId);
+      localStorage.setItem('my_past_orders_list', JSON.stringify(updated));
+      return updated;
+    });
+    triggerNotice('تم حذف الطلب من سجلك المحلي بنجاح.', 'info');
+  }
 
   const handleStartNewCustomerOrder = () => {
     localStorage.removeItem('recent_online_order_id');
@@ -1269,41 +1464,155 @@ export default function App() {
               </div>
             </div>
 
-            {/* Header Interactive Cart Button */}
-            {(!recentOnlineOrderId || !activeCustomerOrder || activeCustomerOrder.status === 'prepared' || activeCustomerOrder.status === 'cancelled') && (
+            <div className="flex items-center gap-2">
+              {/* Previous Orders History Button */}
               <button
                 type="button"
-                id="cart-overlay-button"
                 onClick={() => {
-                  setIsCartOpen(!isCartOpen);
+                  setShowPastOrders(!showPastOrders);
+                  setIsCartOpen(false);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="relative flex items-center gap-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 border-pink-707 cursor-pointer hover:bg-pink-600 hover:shadow-md transition active:scale-95 duration-200 shrink-0 self-center"
+                className={`relative flex items-center gap-2 font-black px-3 py-2 rounded-xl border-b-2 transition duration-200 shrink-0 self-center text-xs cursor-pointer ${
+                  showPastOrders
+                    ? 'bg-pink-100 text-pink-700 border-pink-300 ring-4 ring-pink-50'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-sm'
+                }`}
               >
-                <div className="relative">
-                  <ShoppingBag className="w-4 h-4" />
-                  {customerCart.length > 0 && (
-                    <motion.div
-                      key={customerCart.reduce((sum, item) => sum + item.quantity, 0)}
-                      initial={{ scale: 0.5, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="absolute -top-2.5 -left-2.5 bg-yellow-400 text-slate-900 border border-white w-4.5 h-4.5 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm"
-                    >
-                      {customerCart.reduce((sum, item) => sum + item.quantity, 0)}
-                    </motion.div>
-                  )}
-                </div>
-                <div className="text-right flex flex-col leading-tight font-sans">
-                  <span className="text-[8px] font-extrabold text-pink-100">سلة طلباتي</span>
-                  <span className="text-[10px] font-black">{customerTotals.finalTotal.toFixed(2)} ر.س</span>
-                </div>
+                <span className="text-sm">📋</span>
+                <span className="hidden sm:inline font-sans">طلباتي السابقة ({myPastOrders.length})</span>
+                <span className="sm:hidden font-sans text-[10px]">طلباتي السابق ({myPastOrders.length})</span>
               </button>
-            )}
+
+              {/* Header Interactive Cart Button */}
+              {(!recentOnlineOrderId || !activeCustomerOrder || activeCustomerOrder.status === 'prepared' || activeCustomerOrder.status === 'cancelled') && (
+                <motion.button
+                  type="button"
+                  id="cart-overlay-button"
+                  onClick={() => {
+                    setIsCartOpen(!isCartOpen);
+                    setIsCartGlowing(false);
+                    setShowPastOrders(false); // Close past orders if opening the cart
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  animate={isCartGlowing && customerCart.length > 0 ? {
+                    scale: [1, 1.1, 1, 1.1, 1],
+                    boxShadow: [
+                      "0 0 0 0 rgba(236, 72, 153, 0.7)",
+                      "0 0 18px 8px rgba(245, 158, 11, 0.5)",
+                      "0 0 0 0 rgba(236, 72, 153, 0.7)"
+                    ]
+                  } : {}}
+                  transition={isCartGlowing && customerCart.length > 0 ? {
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  } : {}}
+                  className={`relative flex items-center gap-2 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 cursor-pointer transition duration-200 shrink-0 self-center ${
+                    isCartGlowing && customerCart.length > 0
+                      ? 'bg-gradient-to-r from-amber-500 via-pink-400 to-pink-600 border-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-4 ring-pink-300'
+                      : 'bg-gradient-to-r from-pink-500 to-pink-600 border-pink-700 hover:bg-pink-600 hover:shadow-md active:scale-95'
+                  }`}
+                >
+                  <div className="relative">
+                    <ShoppingBag className="w-4 h-4" />
+                    {customerCart.length > 0 && (
+                      <motion.div
+                        key={customerCart.reduce((sum, item) => sum + item.quantity, 0)}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="absolute -top-2.5 -left-2.5 bg-yellow-400 text-slate-900 border border-white w-4.5 h-4.5 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm"
+                      >
+                        {customerCart.reduce((sum, item) => sum + item.quantity, 0)}
+                      </motion.div>
+                    )}
+                  </div>
+                  <div className="text-right flex flex-col leading-tight font-sans">
+                    <span className="text-[8px] font-extrabold text-pink-100">سلة طلباتي</span>
+                    <span className="text-[10px] font-black">{customerTotals.finalTotal.toFixed(2)} ر.س</span>
+                  </div>
+                </motion.button>
+              )}
+            </div>
           </div>
         </header>
 
         <main className="max-w-7xl mx-auto px-4 mt-4 relative">
-          {isOrdersStopped && !(recentOnlineOrderId && activeCustomerOrder) ? (
+          {showPastOrders ? (
+            /* --- CLIENT COMPLETED PAST ORDERS SCREEN --- */
+            <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6 animate-fadeIn text-right font-sans">
+              <div className="flex justify-between items-center border-b-2 border-dashed border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📋</span>
+                  <h2 className="text-sm font-black text-slate-800">سجل طلباتك السابقة المستلمة</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPastOrders(false)}
+                  className="bg-pink-500 hover:bg-pink-600 text-white font-black text-xs px-3.5 py-1.5 rounded-xl transition cursor-pointer shadow-sm border-b-2 border-pink-700 hover:scale-105 active:scale-95 duration-100"
+                >
+                  العودة للتصميم 🍦
+                </button>
+              </div>
+
+              {myPastOrders.length === 0 ? (
+                <div className="text-center py-10 px-4 text-slate-400 space-y-4">
+                  <span className="text-5xl block animate-bounce">🍦</span>
+                  <h4 className="text-xs font-black text-slate-700 font-sans">لا يوجد لديك أي طلبات سابقة مستلمة</h4>
+                  <p className="text-[10px] font-bold text-slate-400 max-w-sm mx-auto leading-relaxed">
+                    بمجرد أن تقوم بتجهيز طلبك، واستلامه من المحل والضغط على زر الاستلام، سيتم حفظه تلقائياً هنا في ذاكرة جهازك.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-1">
+                  {myPastOrders.map((order, idx) => (
+                    <div key={order.id || idx} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden">
+                      {/* Delete past order from history */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePastOrder(order.id)}
+                        className="absolute top-3 left-3 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 text-[10px] font-black px-2 py-1.5 rounded-xl border border-red-200 transition cursor-pointer hover:scale-105 active:scale-95 duration-100"
+                        title="حذف من السجل"
+                      >
+                        حذف 🗑️
+                      </button>
+
+                      <div className="pl-16">
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-800">
+                          <span className="bg-gradient-to-r from-pink-500 to-pink-600 text-white px-2 py-0.5 rounded-lg font-mono">
+                            {order.orderNumber}
+                          </span>
+                          <span>المستلم: {order.customerName}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold mt-1">
+                          تاريخ المعاملة: {order.timestamp}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-dashed border-slate-200 pt-2.5 space-y-2">
+                        {order.items.map((item, itemIdx) => (
+                          <div key={itemIdx} className="text-[11px] text-slate-600 font-bold flex justify-between items-center bg-white/60 p-2 rounded-xl border border-slate-100/60">
+                            <span className="max-w-[70%] text-right font-sans">
+                              🥣 {item.container.name} ×{item.quantity} ({item.flavors.map(f => f.name).join(' ، ')})
+                              {item.toppings.length > 0 && ` + تزيين بـ: ${item.toppings.map(t => t.name).join('، ')}`}
+                            </span>
+                            <span className="font-mono text-slate-700 font-black shrink-0">
+                              {((item.basePrice + item.toppingsPrice) * item.quantity).toFixed(2)} ر.س
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="border-t border-dashed border-slate-200 pt-2 flex justify-between items-center text-xs font-black">
+                        <span className="text-slate-500">القيمة الإجمالية المدفوعة:</span>
+                        <span className="text-pink-600 font-mono text-xs">{order.total.toFixed(2)} ريال سعودي</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : isOrdersStopped && !(recentOnlineOrderId && activeCustomerOrder) ? (
             /* --- ONLINE ORDERS STOPPED SCREEN --- */
             <div className="max-w-xl mx-auto bg-white rounded-3xl p-10 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] text-center space-y-6 my-12 font-sans">
               <div className="text-6xl animate-bounce">🍨🛑</div>
@@ -1362,9 +1671,37 @@ export default function App() {
                   <p className="text-sm font-black text-blue-600">👨‍🍳 تم قبول طلبك وبدأ صانع الآيس كريم بتجهيز المكونات والألوان الجميلة حالاً! جهز كاشك أو بطاقتك 💳</p>
                 )}
                 {activeCustomerOrder.status === 'prepared' && (
-                  <div className="space-y-2">
-                    <p className="text-base font-black text-emerald-650 animate-bounce">🍦✨ طلبك البارد الرائع جاهز ومكتمل للاستلام في طابور المحل! هنيئاً وعافية مقدماً.</p>
-                    <p className="text-xs text-slate-550 font-bold">يرجى تمرير رقم طلبك <span className="font-mono text-pink-600 font-extrabold">{activeCustomerOrder.orderNumber}</span> للبائع وسداد القيمة {activeCustomerOrder.total.toFixed(2)} ر.س واستلام الآيس كريم!</p>
+                  <div className="space-y-4 flex flex-col items-center">
+                    <p className="text-base font-black text-emerald-655 animate-bounce text-center">🍦✨ طلبك البارد الرائع جاهز ومكتمل للاستلام في طابور المحل! هنيئاً وعافية مقدماً.</p>
+                    <p className="text-xs text-slate-550 font-bold text-center">يرجى تمرير رقم طلبك <span className="font-mono text-pink-600 font-extrabold">{activeCustomerOrder.orderNumber}</span> للبائع وسداد القيمة {activeCustomerOrder.total.toFixed(2)} ر.س واستلام الآيس كريم!</p>
+                    
+                    {/* Order Received Button moved above the automatic redirect countdown */}
+                    <button
+                      onClick={() => handleMarkOrderAsReceived()}
+                      className="w-full max-w-sm bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs py-4 rounded-xl border-b-4 border-emerald-700 hover:border-emerald-800 transition text-center shadow-lg cursor-pointer flex items-center justify-center gap-2 animate-bounce mt-2"
+                    >
+                      <span>✅</span>
+                      <span>تم استلام الطلب - العودة للتصميم 🍦</span>
+                    </button>
+
+                    {preparedCountdown !== null && (
+                      <div className="bg-emerald-50 text-emerald-800 p-4 rounded-2xl border-2 border-emerald-200 inline-flex flex-col items-center justify-center gap-2 font-sans mt-3 text-center mx-auto max-w-sm">
+                        <span className="text-xs font-black flex items-center justify-center gap-1.5 flex-wrap">
+                          <span className="animate-spin text-sm">⏳</span>
+                          <span>التحول التلقائي لطلباتك السابقة تم خلال:</span>
+                          <span className="font-mono text-xs text-pink-600 font-extrabold px-2 py-0.5 bg-white rounded border border-emerald-300 min-w-[2.5rem] inline-block">{preparedCountdown}ث</span>
+                        </span>
+                        {/* Beautiful progress indicator bar */}
+                        <div className="w-48 bg-emerald-200 h-1.5 rounded-full overflow-hidden mt-1">
+                          <motion.div 
+                            initial={{ width: '100%' }}
+                            animate={{ width: `${(preparedCountdown / 10) * 100}%` }}
+                            transition={{ duration: 1, ease: 'linear' }}
+                            className="bg-emerald-600 h-full"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {activeCustomerOrder.status === 'cancelled' && (
@@ -1465,10 +1802,12 @@ export default function App() {
                   </button>
                 )}
                 
-                {(activeCustomerOrder.status === 'prepared' || activeCustomerOrder.status === 'cancelled') && (
+
+                
+                {activeCustomerOrder.status === 'cancelled' && (
                   <button
                     onClick={handleStartNewCustomerOrder}
-                    className="w-full bg-pink-500 hover:bg-pink-600 text-white font-black text-xs py-3.5 rounded-xl border-b-4 border-pink-700 hover:border-pink-800 transition text-center shadow-lg cursor-pointer animate-pulse"
+                    className="w-full bg-pink-500 hover:bg-pink-600 text-white font-black text-xs py-3.5 rounded-xl border-b-4 border-pink-700 hover:border-pink-800 transition text-center shadow-lg cursor-pointer active:scale-95 duration-100"
                   >
                     صمم آيس كريم جديد الآن! 🍦🚀
                   </button>
@@ -1572,34 +1911,81 @@ export default function App() {
                 {/* Left Column: Shipment Contact Details & Pricing Summary */}
                 <div className="lg:col-span-12 xl:col-span-5 space-y-6">
                   
-                  {/* Customer Information/Pickup Panel */}
-                  <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right">
-                    <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5 font-sans">٢. معلومات الاستلام والدفع</h3>
+                  {/* Box 1: Customer Information / Pickup Panel */}
+                  <div className={`bg-white rounded-3xl p-6 border-4 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                    !selfCustomerName.trim() 
+                      ? 'border-pink-500 ring-4 ring-pink-100 shadow-[8px_8px_0px_rgba(236,72,153,0.15)] bg-pink-50/5'
+                      : 'border-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">👤</span>
+                        <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5 font-sans">٢. معلومات الاستلام</h3>
+                      </div>
+                      {!selfCustomerName.trim() && (
+                        <span className="bg-pink-100 text-pink-600 font-black text-[9px] px-2.5 py-1 rounded-full animate-pulse border border-pink-200">مطلوب الآن</span>
+                      )}
+                    </div>
                     
                     {/* Buyer/Customer Name */}
                     <div className="flex flex-col gap-1.5 font-sans text-xs">
                       <label className="text-[10px] text-slate-400 font-extrabold leading-relaxed" htmlFor="self-customer-name-inline">اسمك الكريم لتسمعه عند مناداة كوبك: *</label>
-                      <input
-                        type="text"
-                        id="self-customer-name-inline"
-                        placeholder="اكتب اسم العميل الكريم هنا..."
-                        value={selfCustomerName}
-                        onChange={(e) => setSelfCustomerName(e.target.value)}
-                        className="w-full bg-white border-2 border-slate-300 hover:border-pink-300 focus:border-pink-500 focus:outline-none rounded-2xl px-4 py-3 text-xs font-black text-slate-805 placeholder:text-slate-300 shadow-sm transition"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          id="self-customer-name-inline"
+                          placeholder="اكتب اسم العميل الكريم هنا..."
+                          value={selfCustomerName}
+                          onChange={(e) => setSelfCustomerName(e.target.value)}
+                          className={`w-full bg-white border-2 hover:border-pink-300 focus:border-pink-500 focus:outline-none rounded-2xl px-4 py-3 text-xs font-black text-slate-805 placeholder:text-slate-300 shadow-sm transition-all ${
+                            !selfCustomerName.trim()
+                              ? 'border-pink-400 focus:ring-4 focus:ring-pink-100'
+                              : 'border-slate-300'
+                          }`}
+                        />
+                        {!selfCustomerName.trim() && (
+                          <span className="absolute left-3.5 top-3.5 text-xs animate-ping">✍️</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Box 2: Customer Payment Options Panel */}
+                  <div className={`bg-white rounded-3xl p-6 border-4 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                    selfCustomerName.trim() && (!custPaymentMethod || (custPaymentMethod === 'card' && !custBankSubMethod))
+                      ? 'border-amber-500 ring-4 ring-amber-100 bg-amber-50/5 shadow-[8px_8px_0px_rgba(245,158,11,0.15)]'
+                      : 'border-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between border-b border-dashed border-slate-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">💳</span>
+                        <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5 font-sans">٣. السداد والدفع</h3>
+                      </div>
+                      {selfCustomerName.trim() && (!custPaymentMethod || (custPaymentMethod === 'card' && !custBankSubMethod)) && (
+                        <span className="bg-amber-100 text-amber-700 font-black text-[9px] px-2.5 py-1 rounded-full animate-pulse border border-amber-200">الخطوة الفعالة</span>
+                      )}
                     </div>
 
-                    {/* Customer Payment Options */}
-                    <div className="space-y-3 pt-3 border-t border-dashed border-slate-150">
+                    <div className="space-y-3">
                       <div>
-                        <span className="text-[10px] font-black text-slate-400 block mb-2 mr-1">اختر طريقة السداد المفضلة لديك:</span>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-black text-slate-400 block mr-1">اختر طريقة السداد المفضلة لديك:</span>
+                          {selfCustomerName.trim() && (!custPaymentMethod) && (
+                            <span className="text-[9px] text-amber-600 font-black bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full animate-pulse">حدد الطريقة</span>
+                          )}
+                        </div>
                         <div className="grid grid-cols-2 gap-3">
                           <button
                             type="button"
-                            onClick={() => setCustPaymentMethod('cash')}
+                            onClick={() => {
+                              setCustPaymentMethod('cash');
+                              setCustBankSubMethod('');
+                            }}
                             className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
                               custPaymentMethod === 'cash'
                                 ? 'bg-pink-500 border-pink-600 text-white shadow-md'
+                                : selfCustomerName.trim()
+                                ? 'bg-amber-50/20 border-amber-300 text-slate-750 hover:border-pink-300'
                                 : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
                             }`}
                           >
@@ -1608,10 +1994,15 @@ export default function App() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCustPaymentMethod('card')}
+                            onClick={() => {
+                              setCustPaymentMethod('card');
+                              setCustBankSubMethod('');
+                            }}
                             className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
                               custPaymentMethod === 'card'
                                 ? 'bg-pink-500 border-pink-700 text-white shadow-md'
+                                : selfCustomerName.trim()
+                                ? 'bg-amber-50/20 border-amber-300 text-slate-750 hover:border-pink-300'
                                 : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
                             }`}
                           >
@@ -1623,8 +2014,17 @@ export default function App() {
 
                       {/* Customer Bank Transfer Sub-options */}
                       {custPaymentMethod === 'card' && (
-                        <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3.5 space-y-2.5 font-sans">
-                          <span className="text-[10px] font-black text-slate-500 block mr-1">بوابة التحويل المفضلة:</span>
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3.5 space-y-2.5 font-sans overflow-hidden"
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black text-slate-500 block mr-1">بوابة التحويل المفضلة:</span>
+                            {!custBankSubMethod && (
+                              <span className="text-[8px] bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-black animate-pulse">مطلوب التحديد</span>
+                            )}
+                          </div>
                           <div className="grid grid-cols-2 gap-2">
                             {[
                               { id: 'stc', name: 'STC Pay', icon: '📱' },
@@ -1650,14 +2050,23 @@ export default function App() {
                               );
                             })}
                           </div>
-                        </div>
+                        </motion.div>
                       )}
                     </div>
                   </div>
 
                   {/* Calculations breakdown block & Submit */}
-                  <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right">
-                    <h3 className="text-xs font-black text-slate-800 border-r-4 border-slate-400 pr-2 pb-0.5">٣. ملخص الحساب الكلي</h3>
+                  <div className={`bg-white rounded-3xl p-6 border-4 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                    selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                      ? 'border-emerald-500 ring-4 ring-emerald-100 shadow-[8px_8px_0px_rgba(16,185,129,0.15)] bg-emerald-50/5'
+                      : 'border-slate-800'
+                  }`}>
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-black text-slate-800 border-r-4 border-slate-400 pr-2 pb-0.5">٤. ملخص الحساب الكلي</h3>
+                      {selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) && (
+                        <span className="bg-emerald-100 text-emerald-600 font-black text-[9px] px-2.5 py-1 rounded-full border border-emerald-200">جاهز للإرسال 🚀</span>
+                      )}
+                    </div>
                     
                     <div className="space-y-2.5 font-sans text-xs">
                       <div className="flex justify-between text-slate-500 font-bold">
@@ -1687,21 +2096,47 @@ export default function App() {
                     </div>
 
                     {/* Submit order button */}
-                    <button
+                    <motion.button
                       type="button"
                       disabled={customerCart.length === 0}
                       onClick={handleSubmitCustomerOrder}
-                      className={`w-full font-black py-4 rounded-2xl border-b-4 transition flex items-center justify-center gap-2 cursor-pointer shadow-lg text-xs leading-none uppercase ${
+                      animate={selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) ? {
+                        scale: [1, 1.02, 1],
+                        boxShadow: [
+                          "0 4px 6px -1px rgba(16, 185, 129, 0.1)",
+                          "0 15px 25px -5px rgba(16, 185, 129, 0.3)",
+                          "0 4px 6px -1px rgba(16, 185, 129, 0.1)"
+                        ]
+                      } : {}}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 2,
+                        ease: "easeInOut"
+                      }}
+                      className={`w-full font-black py-4 rounded-2xl border-b-4 transition flex items-center justify-center gap-2 cursor-pointer text-xs leading-none uppercase ${
                         customerCart.length === 0
                           ? 'bg-slate-200 text-slate-450 border-slate-350 cursor-not-allowed'
-                          : 'bg-pink-500 hover:bg-pink-600 text-white border-pink-700 hover:border-pink-800 active:scale-[0.99] duration-100'
+                          : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-700 hover:border-emerald-800'
+                          : 'bg-pink-500 hover:bg-pink-600 text-white border-pink-700 hover:border-pink-800'
                       }`}
-                      style={{ backgroundColor: customerCart.length === 0 ? '#cbd5e1' : '#ec4899', borderColor: customerCart.length === 0 ? '#94a3b8' : '#be185d' }}
+                      style={{ 
+                        backgroundColor: customerCart.length === 0 
+                          ? '#cbd5e1' 
+                          : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                          ? '#10b981'
+                          : '#ec4899', 
+                        borderColor: customerCart.length === 0 
+                          ? '#94a3b8' 
+                          : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                          ? '#047857'
+                          : '#be185d' 
+                      }}
                     >
                       <span>🚀</span>
                       <span>إرسال وتحضير الطلب سحابياً</span>
-                    </button>
-                    
+                    </motion.button>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -1729,7 +2164,7 @@ export default function App() {
                   <span>1. نوع وعاء التقديم والتركيب</span>
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {containers.map(opt => {
+                  {containers.filter(opt => opt.isHidden !== true).map(opt => {
                     const isSelected = custContainer?.id === opt.id;
                     const isAvailable = opt.isAvailable !== false;
                     return (
@@ -1775,7 +2210,7 @@ export default function App() {
                   </h2>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {flavors.map(opt => {
+                  {flavors.filter(opt => opt.isHidden !== true).map(opt => {
                     const countSelected = custFlavors.filter(f => f.id === opt.id).length;
                     const isAvailable = opt.isAvailable !== false;
                     return (
@@ -1830,7 +2265,7 @@ export default function App() {
                   <span>3. إضافة حب الرغبة والزينة الحصرية وافل وصوص</span>
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {toppings.map(opt => {
+                  {toppings.filter(opt => opt.isHidden !== true).map(opt => {
                     const isSelected = custToppings.some(t => t.id === opt.id);
                     const isAvailable = opt.isAvailable !== false;
                     return (
@@ -1922,6 +2357,130 @@ export default function App() {
             </a>
           </div>
         </footer>
+
+        {/* --- CUSTOM ADD TO CART CONFIRMATION MODAL --- */}
+        <AnimatePresence>
+          {showCustAddConfirmModal && lastAddedCustItem && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              {/* Blur backdrop overlay */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowCustAddConfirmModal(false)}
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+              />
+
+              {/* Modal Card Content */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 350 }}
+                className="relative bg-white w-full max-w-md rounded-[2.5rem] border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.15)] overflow-hidden p-6 text-center space-y-5 font-sans z-10"
+              >
+                {/* Celebratory top section */}
+                <div className="relative pt-4">
+                  <div className="mx-auto w-16 h-16 bg-emerald-100 border-2 border-emerald-500 rounded-full flex items-center justify-center text-3xl shadow-sm animate-bounce">
+                    ✨
+                  </div>
+                  <motion.div
+                    className="absolute inset-0 flex justify-center items-center pointer-events-none"
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                  >
+                    <div className="w-24 h-24 rounded-full border-4 border-pink-400 opacity-30" />
+                  </motion.div>
+                </div>
+
+                <div className="space-y-2 text-center">
+                  <h3 className="text-xl font-black text-emerald-600">تم حفظ الآيس كريم بنجاح! 🎉</h3>
+                  <p className="text-xs font-bold text-slate-500">تم تصميم مزيجك الفريد وإضافته إلى سلة التسوق الذاتية بنجاح.</p>
+                </div>
+
+                {/* customized item specifications card */}
+                <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 text-right space-y-2">
+                  <span className="text-[10px] font-extrabold text-slate-400 block border-b border-slate-200 pb-1.5 mb-1.5 uppercase tracking-wide">تفاصيل كوب آيس كريم أحلامك:</span>
+                  
+                  {/* Container Details */}
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-500">نوع وعاء التقديم:</span>
+                    <span className="font-extrabold text-slate-800 flex items-center gap-1">
+                      <span>{lastAddedCustItem.container.emoji || '🍨'}</span>
+                      <span>{lastAddedCustItem.container.name}</span>
+                    </span>
+                  </div>
+
+                  {/* Flavors Details */}
+                  <div className="flex justify-between items-start text-xs gap-4">
+                    <span className="font-bold text-slate-500 shrink-0">النكهات المختارة:</span>
+                    <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
+                      {lastAddedCustItem.flavors.map((flavor, index) => (
+                        <span key={index} className="bg-pink-100/60 border border-pink-200 rounded-lg px-1.5 py-0.5 font-extrabold text-[10px] text-pink-700 flex items-center gap-0.5">
+                          <span>{flavor.emoji || '🍦'}</span>
+                          <span>{flavor.name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Toppings Details */}
+                  <div className="flex justify-between items-start text-xs gap-4">
+                    <span className="font-bold text-slate-500 shrink-0">إضافات الزينة:</span>
+                    <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
+                      {lastAddedCustItem.toppings.length === 0 ? (
+                        <span className="text-[10px] font-bold text-slate-400">- بدون إضافات -</span>
+                      ) : (
+                        lastAddedCustItem.toppings.map((topping, index) => (
+                          <span key={index} className="bg-amber-100/60 border border-amber-200 rounded-lg px-1.5 py-0.5 font-extrabold text-[10px] text-amber-800 flex items-center gap-0.5">
+                            <span>{topping.emoji || '🍓'}</span>
+                            <span>{topping.name}</span>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quantity and totals */}
+                  <div className="border-t border-dashed border-slate-200 pt-2 mt-2 flex justify-between items-center">
+                    <div className="text-xs">
+                      <span className="font-bold text-slate-500">الكمية:</span>{' '}
+                      <span className="font-black text-pink-600">{lastAddedCustItem.quantity} أكواب</span>
+                    </div>
+                    <div className="text-xs">
+                      <span className="font-bold text-slate-500">القيمة الإجمالية:</span>{' '}
+                      <span className="font-black text-slate-800 bg-white border border-slate-200 rounded-lg px-2 py-0.5">{(lastAddedCustItem.itemTotal).toFixed(2)} ر.س</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer buttons */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustAddConfirmModal(false);
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800 font-extrabold text-xs py-3 px-4 rounded-xl transition cursor-pointer border border-slate-200"
+                  >
+                    إضافة طلب آخر 🍨
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustAddConfirmModal(false);
+                      setIsCartOpen(true);
+                    }}
+                    className="bg-pink-500 hover:bg-pink-600 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.2)] transition cursor-pointer border border-pink-600"
+                  >
+                    عرض السلة والدفع 🛒
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       </div>
     );
@@ -2115,7 +2674,7 @@ export default function App() {
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {containers.map(opt => {
+                  {containers.filter(opt => opt.isHidden !== true).map(opt => {
                     const isSelected = selectedContainer.id === opt.id;
                     return (
                       <button
@@ -2153,7 +2712,7 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {flavors.map(flavor => {
+                  {flavors.filter(flavor => flavor.isHidden !== true).map(flavor => {
                     const selectedCount = selectedFlavors.filter(f => f.id === flavor.id).length;
                     const isSelected = selectedCount > 0;
                     return (
@@ -2205,11 +2764,11 @@ export default function App() {
 
                 <div className="space-y-6">
                   {/* Category: Solids */}
-                  {toppings.filter(t => t.category === 'solid').length > 0 && (
+                  {toppings.filter(t => t.category === 'solid' && t.isHidden !== true).length > 0 && (
                     <div>
                       <h3 className="text-xs font-black text-slate-400 mb-3 block uppercase tracking-widest mr-1">المقرمشات والمكسرات الصلبة</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                        {toppings.filter(t => t.category === 'solid').map(topping => {
+                        {toppings.filter(t => t.category === 'solid' && t.isHidden !== true).map(topping => {
                           const isSelected = selectedToppings.some(t => t.id === topping.id);
                           return (
                             <button
@@ -2239,11 +2798,11 @@ export default function App() {
                   )}
 
                   {/* Category: Sauces */}
-                  {toppings.filter(t => t.category === 'sauce').length > 0 && (
+                  {toppings.filter(t => t.category === 'sauce' && t.isHidden !== true).length > 0 && (
                     <div>
                       <h3 className="text-xs font-black text-slate-400 mb-3 block uppercase tracking-widest mr-1">الصوصات والسوائل الهلامية</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                        {toppings.filter(t => t.category === 'sauce').map(topping => {
+                        {toppings.filter(t => t.category === 'sauce' && t.isHidden !== true).map(topping => {
                           const isSelected = selectedToppings.some(t => t.id === topping.id);
                           return (
                             <button
@@ -2273,11 +2832,11 @@ export default function App() {
                   )}
 
                   {/* Category: Fruits */}
-                  {toppings.filter(t => t.category === 'fruit').length > 0 && (
+                  {toppings.filter(t => t.category === 'fruit' && t.isHidden !== true).length > 0 && (
                     <div>
                       <h3 className="text-xs font-black text-slate-400 mb-3 block uppercase tracking-widest mr-1">قطع الفواكه الطازجة</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                        {toppings.filter(t => t.category === 'fruit').map(topping => {
+                        {toppings.filter(t => t.category === 'fruit' && t.isHidden !== true).map(topping => {
                           const isSelected = selectedToppings.some(t => t.id === topping.id);
                           return (
                             <button
@@ -3562,13 +4121,73 @@ export default function App() {
                 <div className="space-y-4">
                   {containers.map((opt) => (
                     <div key={opt.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl select-none">{opt.emoji || (opt.id === 'cone' ? '🍦' : '🍨')}</span>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-slate-800 truncate">{opt.name}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold block">{opt.nameEn}</span>
+                      {editingItemId === opt.id && editingItemType === 'container' ? (
+                        <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-3 space-y-2">
+                          <span className="text-[10px] font-black text-amber-700 block">تعديل الوعاء ✏️</span>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 block">الاسم بالعربية:</label>
+                            <input
+                              type="text"
+                              value={editNameAr}
+                              onChange={(e) => setEditNameAr(e.target.value)}
+                              className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 block">الاسم بالإنجليزي:</label>
+                            <input
+                              type="text"
+                              value={editNameEn}
+                              onChange={(e) => setEditNameEn(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-500 block">إيموجي:</label>
+                            <input
+                              type="text"
+                              value={editEmoji}
+                              onChange={(e) => setEditEmoji(e.target.value)}
+                              className="w-12 text-center text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div className="flex gap-1.5 pt-1">
+                            <button
+                              onClick={handleSaveItemEdit}
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] py-1 px-3 rounded-lg transition shrink-0 cursor-pointer"
+                            >
+                              حفظ 💾
+                            </button>
+                            <button
+                              onClick={handleCancelItemEdit}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] py-1 px-2.5 rounded-lg transition shrink-0 cursor-pointer"
+                            >
+                              إلغاء ×
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          {opt.imageUrl ? (
+                            <img src={opt.imageUrl} alt={opt.name} className="w-12 h-12 object-cover rounded-xl border-2 border-pink-100 shrink-0" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span className="text-3xl select-none">{opt.emoji || (opt.id === 'cone' ? '🍦' : '🍨')}</span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-xs font-black text-slate-800 truncate">{opt.name}</h4>
+                              <button
+                                onClick={() => handleStartItemEdit('container', opt)}
+                                className="text-[10px] text-pink-500 hover:text-pink-600 hover:underline font-bold shrink-0 transition"
+                                title="تعديل الاسم"
+                              >
+                                ✏️ تعديل
+                              </button>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold block">{opt.nameEn}</span>
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-550 shrink-0">السعر:</span>
@@ -3599,10 +4218,10 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2">
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2 flex-wrap">
                         <button
                           onClick={() => handleDeleteItem('container', opt.id)}
-                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer"
+                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer shrink-0"
                           title="حذف هذا الوعاء"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -3610,14 +4229,26 @@ export default function App() {
 
                         <button
                           onClick={() => handleToggleAvailability('container', opt.id, opt.isAvailable !== false)}
-                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                          className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
                             opt.isAvailable !== false
                               ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                               : 'bg-rose-50 border-rose-200 text-rose-600'
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${opt.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          {opt.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                          {opt.isAvailable !== false ? 'متوفر' : 'غير متوفر'}
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleHidden('container', opt.id, opt.isHidden !== false)}
+                          className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                            opt.isHidden !== true
+                              ? 'bg-blue-50 border-blue-200 text-blue-600'
+                              : 'bg-slate-100 border-slate-300 text-slate-500'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${opt.isHidden !== true ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                          {opt.isHidden !== true ? 'ظاهر 👁️' : 'مخفي 🙈'}
                         </button>
                       </div>
                     </div>
@@ -3645,7 +4276,7 @@ export default function App() {
                       
                       <div className="space-y-2">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-550 block mb-1">الاسم بالعربية:</label>
+                          <label className="text-[10px] font-bold text-slate-555 block mb-1">الاسم بالعربية:</label>
                           <input
                             type="text"
                             placeholder="مثال: كوب عملاق"
@@ -3657,7 +4288,7 @@ export default function App() {
                         
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-550 block mb-1">الاسم بالإنجليزي:</label>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">الاسم بالإنجليزي:</label>
                             <input
                               type="text"
                               placeholder="Giant Cup"
@@ -3667,7 +4298,7 @@ export default function App() {
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-bold text-slate-550 block mb-1">السعر (ر.س):</label>
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">السعر (ر.س):</label>
                             <input
                               type="number"
                               step="0.1"
@@ -3702,6 +4333,41 @@ export default function App() {
                             />
                           </div>
                         </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-550 block mb-1">رابط صورة مخصصة (اختياري):</label>
+                          <input
+                            type="text"
+                            placeholder="https://images.unsplash.com/..."
+                            value={newContainerImageUrl}
+                            onChange={(e) => setNewContainerImageUrl(e.target.value)}
+                            className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans text-left"
+                            dir="ltr"
+                          />
+                          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setNewContainerImageUrl('https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=300&q=80')}
+                              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                            >
+                              📸 صورة كوب ورقي
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewContainerImageUrl('https://images.unsplash.com/photo-1559622214-f8a9850965b1?auto=format&fit=crop&w=300&q=80')}
+                              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                            >
+                              🍦 صورة بسكوت وافل
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewContainerImageUrl('')}
+                              className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2 py-1 rounded transition"
+                            >
+                              إلغاء الصورة (إيموجي فقط)
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <button
@@ -3719,7 +4385,9 @@ export default function App() {
                             description: newContainerDesc || 'وعاء تقديم إضافي مميز لموقعك.',
                             color: '#FFE4E6',
                             emoji: newContainerEmoji,
-                            isAvailable: true
+                            isAvailable: true,
+                            isHidden: false,
+                            imageUrl: newContainerImageUrl || ''
                           };
                           handleAddItem('container', newItem);
                           setNewContainerName('');
@@ -3727,6 +4395,7 @@ export default function App() {
                           setNewContainerPrice('');
                           setNewContainerDesc('');
                           setNewContainerEmoji('🍧');
+                          setNewContainerImageUrl('');
                           setShowAddContainerForm(false);
                         }}
                         className="w-full py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-black rounded-xl transition cursor-pointer text-center"
@@ -3746,17 +4415,77 @@ export default function App() {
                 </h3>
                 <div className="space-y-4">
                   {flavors.map((flavor) => (
-                    <div key={flavor.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl select-none">{flavor.emoji}</span>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-slate-800 truncate">{flavor.name}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold block">{flavor.nameEn}</span>
+                    <div key={flavor.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3 font-sans">
+                      {editingItemId === flavor.id && editingItemType === 'flavor' ? (
+                        <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-3 space-y-2">
+                          <span className="text-[10px] font-black text-amber-700 block">تعديل النكهة ✏️</span>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-550 block">الاسم بالعربية:</label>
+                            <input
+                              type="text"
+                              value={editNameAr}
+                              onChange={(e) => setEditNameAr(e.target.value)}
+                              className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-555 block">الاسم بالإنجليزي:</label>
+                            <input
+                              type="text"
+                              value={editNameEn}
+                              onChange={(e) => setEditNameEn(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-555 block">إيموجي:</label>
+                            <input
+                              type="text"
+                              value={editEmoji}
+                              onChange={(e) => setEditEmoji(e.target.value)}
+                              className="w-12 text-center text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div className="flex gap-1.5 pt-1">
+                            <button
+                              onClick={handleSaveItemEdit}
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] py-1 px-3 rounded-lg transition shrink-0 cursor-pointer"
+                            >
+                              حفظ 💾
+                            </button>
+                            <button
+                              onClick={handleCancelItemEdit}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] py-1 px-2.5 rounded-lg transition shrink-0 cursor-pointer"
+                            >
+                              إلغاء ×
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          {flavor.imageUrl ? (
+                            <img src={flavor.imageUrl} alt={flavor.name} className="w-12 h-12 object-cover rounded-xl border-2 border-pink-100 shrink-0" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span className="text-3xl select-none">{flavor.emoji || '🍦'}</span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-xs font-black text-slate-800 truncate">{flavor.name}</h4>
+                              <button
+                                onClick={() => handleStartItemEdit('flavor', flavor)}
+                                className="text-[10px] text-pink-500 hover:text-pink-600 hover:underline font-bold shrink-0 transition"
+                                title="تعديل الاسم"
+                              >
+                                ✏️ تعديل
+                              </button>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold block">{flavor.nameEn}</span>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-550 shrink-0">السعر الإضافي:</span>
+                        <span className="text-xs font-bold text-slate-550 shrink-0">السعر:</span>
                         <div className="flex items-center bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-inner flex-1">
                           <button
                             onClick={() => handleUpdatePrice('flavor', flavor.id, Math.max(0, flavor.price - 0.5))}
@@ -3784,10 +4513,10 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2">
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2 flex-wrap">
                         <button
                           onClick={() => handleDeleteItem('flavor', flavor.id)}
-                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer"
+                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer shrink-0"
                           title="حذف هذه النكهة"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -3795,14 +4524,26 @@ export default function App() {
 
                         <button
                           onClick={() => handleToggleAvailability('flavor', flavor.id, flavor.isAvailable !== false)}
-                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                          className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
                             flavor.isAvailable !== false
                               ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                               : 'bg-rose-50 border-rose-200 text-rose-600'
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${flavor.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          {flavor.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                          {flavor.isAvailable !== false ? 'متوفر' : 'غير متوفر'}
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleHidden('flavor', flavor.id, flavor.isHidden !== false)}
+                          className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                            flavor.isHidden !== true
+                              ? 'bg-blue-50 border-blue-200 text-blue-600'
+                              : 'bg-slate-100 border-slate-300 text-slate-500'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${flavor.isHidden !== true ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                          {flavor.isHidden !== true ? 'ظاهر 👁️' : 'مخفي 🙈'}
                         </button>
                       </div>
                     </div>
@@ -3819,7 +4560,7 @@ export default function App() {
                   ) : (
                     <div className="bg-pink-50/20 border-2 border-pink-200 rounded-2xl p-4 space-y-3 font-sans">
                       <div className="flex items-center justify-between border-b border-pink-100 pb-2">
-                        <span className="text-xs font-black text-pink-600">إضافة نكهة جديدة 🍦</span>
+                        <span className="text-xs font-black text-pink-600">إضافة نكهة جديدة ✨</span>
                         <button
                           onClick={() => setShowAddFlavorForm(false)}
                           className="text-[10px] text-slate-400 hover:text-rose-600 font-bold"
@@ -3830,10 +4571,10 @@ export default function App() {
 
                       <div className="space-y-2">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-555 block mb-1">اسم النكهة (بالعربية):</label>
+                          <label className="text-[10px] font-bold text-slate-550 block mb-1">اسم النكهة (بالعربية):</label>
                           <input
                             type="text"
-                            placeholder="مثال: فستق بالهيل"
+                            placeholder="مثال: شوكولاتة بالبندق"
                             value={newFlavorName}
                             onChange={(e) => setNewFlavorName(e.target.value)}
                             className="w-full text-xs font-bold border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
@@ -3845,10 +4586,10 @@ export default function App() {
                             <label className="text-[10px] font-bold text-slate-555 block mb-1">الاسم بالإنجليزي:</label>
                             <input
                               type="text"
-                              placeholder="Pistachio Cardamom"
+                              placeholder="Hazelnut Chocolate"
                               value={newFlavorNameEn}
                               onChange={(e) => setNewFlavorNameEn(e.target.value)}
-                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans"
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-405 bg-white font-sans"
                             />
                           </div>
                           <div>
@@ -3857,7 +4598,7 @@ export default function App() {
                               type="number"
                               step="0.1"
                               min="0"
-                              placeholder="0.0"
+                              placeholder="2.5"
                               value={newFlavorPrice}
                               onChange={(e) => setNewFlavorPrice(e.target.value)}
                               className="w-full text-xs font-mono border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
@@ -3865,15 +4606,59 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-555 block mb-1">رمز إيموجي (Emoji):</label>
-                          <input
-                            type="text"
-                            placeholder="🍦"
-                            value={newFlavorEmoji}
-                            onChange={(e) => setNewFlavorEmoji(e.target.value)}
-                            className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
-                          />
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-1">
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">إيموجي:</label>
+                            <input
+                              type="text"
+                              placeholder="🍦"
+                              value={newFlavorEmoji}
+                              onChange={(e) => setNewFlavorEmoji(e.target.value)}
+                              className="w-full text-center text-sm border border-slate-200 rounded-xl px-1.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="text-[10px] font-bold text-slate-555 block mb-1">رابط صورة مخصصة (اختياري):</label>
+                            <input
+                              type="text"
+                              placeholder="https://images.unsplash.com/..."
+                              value={newFlavorImageUrl}
+                              onChange={(e) => setNewFlavorImageUrl(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans text-left"
+                              dir="ltr"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setNewFlavorImageUrl('https://images.unsplash.com/photo-1570197788417-0e82375c9371?auto=format&fit=crop&w=300&q=80')}
+                            className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                          >
+                            🍓 فانيليا فراولة
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewFlavorImageUrl('https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=300&q=80')}
+                            className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                          >
+                            🍫 شوكولاتة
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewFlavorImageUrl('https://images.unsplash.com/photo-1505394033343-40a690729713?auto=format&fit=crop&w=300&q=80')}
+                            className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                          >
+                            💚 فستق
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewFlavorImageUrl('')}
+                            className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2 py-1 rounded transition"
+                          >
+                            إلغاء الصورة (إيموجي)
+                          </button>
                         </div>
                       </div>
 
@@ -3891,13 +4676,16 @@ export default function App() {
                             price: parseFloat(newFlavorPrice) || 0,
                             color: '#FDF2F8',
                             emoji: newFlavorEmoji || '🍦',
-                            isAvailable: true
+                            isAvailable: true,
+                            isHidden: false,
+                            imageUrl: newFlavorImageUrl || ''
                           };
                           handleAddItem('flavor', newItem);
                           setNewFlavorName('');
                           setNewFlavorNameEn('');
                           setNewFlavorPrice('');
                           setNewFlavorEmoji('🍦');
+                          setNewFlavorImageUrl('');
                           setShowAddFlavorForm(false);
                         }}
                         className="w-full py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-black rounded-xl transition cursor-pointer text-center"
@@ -3918,13 +4706,69 @@ export default function App() {
                 <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
                   {toppings.map((topping) => (
                     <div key={topping.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3 font-sans">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl select-none">{topping.emoji}</span>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-slate-800 truncate">{topping.name}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold block">{topping.nameEn} • {topping.category === 'solid' ? 'جامد' : topping.category === 'sauce' ? 'وافل وصوص' : 'فواكه'}</span>
+                      {editingItemId === topping.id && editingItemType === 'topping' ? (
+                        <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-3 space-y-2">
+                          <span className="text-[10px] font-black text-amber-700 block">تعديل الإضافة ✏️</span>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-550 block">الاسم بالعربية:</label>
+                            <input
+                              type="text"
+                              value={editNameAr}
+                              onChange={(e) => setEditNameAr(e.target.value)}
+                              className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-555 block">الاسم بالإنجليزي:</label>
+                            <input
+                              type="text"
+                              value={editNameEn}
+                              onChange={(e) => setEditNameEn(e.target.value)}
+                              className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white font-sans"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-555 block">إيموجي:</label>
+                            <input
+                              type="text"
+                              value={editEmoji}
+                              onChange={(e) => setEditEmoji(e.target.value)}
+                              className="w-12 text-center text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div className="flex gap-1.5 pt-1">
+                            <button
+                              onClick={handleSaveItemEdit}
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] py-1 px-3 rounded-lg transition shrink-0 cursor-pointer"
+                            >
+                              حفظ 💾
+                            </button>
+                            <button
+                              onClick={handleCancelItemEdit}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] py-1 px-2.5 rounded-lg transition shrink-0 cursor-pointer"
+                            >
+                              إلغاء ×
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className="text-3xl select-none">{topping.emoji}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-xs font-black text-slate-800 truncate">{topping.name}</h4>
+                              <button
+                                onClick={() => handleStartItemEdit('topping', topping)}
+                                className="text-[10px] text-pink-500 hover:text-pink-600 hover:underline font-bold shrink-0 transition"
+                                title="تعديل الاسم"
+                              >
+                                ✏️ تعديل
+                              </button>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold block">{topping.nameEn} • {topping.category === 'solid' ? 'جامد' : topping.category === 'sauce' ? 'وافل وصوص' : 'فواكه'}</span>
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-550 shrink-0">السعر:</span>
@@ -3955,10 +4799,10 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-400">ر.س</span>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2">
+                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 gap-2 flex-wrap">
                         <button
                           onClick={() => handleDeleteItem('topping', topping.id)}
-                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer"
+                          className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-150 border border-rose-200 rounded-xl transition cursor-pointer shrink-0"
                           title="حذف هذه الإضافة"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -3966,14 +4810,26 @@ export default function App() {
 
                         <button
                           onClick={() => handleToggleAvailability('topping', topping.id, topping.isAvailable !== false)}
-                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                          className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
                             topping.isAvailable !== false
                               ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                               : 'bg-rose-50 border-rose-200 text-rose-600'
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${topping.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          {topping.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
+                          {topping.isAvailable !== false ? 'متوفر' : 'غير متوفر'}
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleHidden('topping', topping.id, topping.isHidden !== false)}
+                          className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border flex-1 justify-center ${
+                            topping.isHidden !== true
+                              ? 'bg-blue-50 border-blue-200 text-blue-600'
+                              : 'bg-slate-100 border-slate-300 text-slate-500'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${topping.isHidden !== true ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                          {topping.isHidden !== true ? 'ظاهر 👁️' : 'مخفي 🙈'}
                         </button>
                       </div>
                     </div>
@@ -4019,7 +4875,7 @@ export default function App() {
                               placeholder="Roasted Almonds"
                               value={newToppingNameEn}
                               onChange={(e) => setNewToppingNameEn(e.target.value)}
-                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans"
+                              className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-405 bg-white font-sans"
                             />
                           </div>
                           <div>
@@ -4060,6 +4916,48 @@ export default function App() {
                             />
                           </div>
                         </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-555 block mb-1">رابط صورة مخصصة (اختياري):</label>
+                          <input
+                            type="text"
+                            placeholder="https://images.unsplash.com/..."
+                            value={newToppingImageUrl}
+                            onChange={(e) => setNewToppingImageUrl(e.target.value)}
+                            className="w-full text-xs border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-pink-400 bg-white font-sans text-left"
+                            dir="ltr"
+                          />
+                          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setNewToppingImageUrl('https://images.unsplash.com/photo-1516738901171-8eb4fc13bd20?auto=format&fit=crop&w=300&q=80')}
+                              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                            >
+                              🌈 الملبس والسكاكر
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewToppingImageUrl('https://images.unsplash.com/photo-1541532713592-79a0317b6b77?auto=format&fit=crop&w=300&q=80')}
+                              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                            >
+                              🌰 فستق ومكسرات
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewToppingImageUrl('https://images.unsplash.com/photo-1621263764267-331b26801fb2?auto=format&fit=crop&w=300&q=80')}
+                              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded transition"
+                            >
+                              🍯 شوكولاتة وكراميل
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewToppingImageUrl('')}
+                              className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2 py-1 rounded transition"
+                            >
+                              إلغاء الصورة (إيموجي)
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       <button
@@ -4076,7 +4974,9 @@ export default function App() {
                             price: parseFloat(newToppingPrice) || 0,
                             category: newToppingCategory,
                             emoji: newToppingEmoji || '🍒',
-                            isAvailable: true
+                            isAvailable: true,
+                            isHidden: false,
+                            imageUrl: newToppingImageUrl || ''
                           };
                           handleAddItem('topping', newItem);
                           setNewToppingName('');
@@ -4084,6 +4984,7 @@ export default function App() {
                           setNewToppingPrice('');
                           setNewToppingEmoji('🍒');
                           setNewToppingCategory('solid');
+                          setNewToppingImageUrl('');
                           setShowAddToppingForm(false);
                         }}
                         className="w-full py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-black rounded-xl transition cursor-pointer text-center"
@@ -4095,76 +4996,12 @@ export default function App() {
                 </div>
               </div>
 
-              {/* CATEGORY 3: TOPPINGS */}
-              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
-                <h3 className="font-black text-slate-800 text-sm border-r-4 border-pink-500 pr-2 pb-1 flex items-center justify-between">
-                  <span>3. إضافات الزينة والصلصات</span>
-                  <span className="text-xs text-slate-400 font-bold">({toppings.length} إضافات)</span>
-                </h3>
-                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-                  {toppings.map((topping) => (
-                    <div key={topping.id} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-3 font-sans">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl select-none">{topping.emoji}</span>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-slate-800 truncate">{topping.name}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold block">{topping.nameEn} • {topping.category === 'solid' ? 'جامد' : topping.category === 'sauce' ? 'وافل وصوص' : 'فواكه'}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-500 shrink-0">السعر:</span>
-                        <div className="flex items-center bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-inner flex-1">
-                          <button
-                            onClick={() => handleUpdatePrice('topping', topping.id, Math.max(0, topping.price - 0.5))}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black w-8 h-8 flex items-center justify-center transition active:scale-95"
-                            title="ناقص 0.5 ريال"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={topping.price}
-                            onChange={(e) => handleUpdatePrice('topping', topping.id, parseFloat(e.target.value) || 0)}
-                            className="w-full text-center text-xs font-black font-mono text-slate-800 focus:outline-none"
-                          />
-                          <button
-                            onClick={() => handleUpdatePrice('topping', topping.id, topping.price + 0.5)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black w-8 h-8 flex items-center justify-center transition active:scale-95"
-                            title="زائد 0.5 ريال"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <span className="text-xs font-bold text-slate-400">ر.س</span>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200">
-                        <span className="text-xs font-bold text-slate-550">حالة التوفر:</span>
-                        <button
-                          onClick={() => handleToggleAvailability('topping', topping.id, topping.isAvailable !== false)}
-                          className={`px-3 py-1 rounded-xl text-[10px] font-black transition cursor-pointer flex items-center gap-1 border ${
-                            topping.isAvailable !== false
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                              : 'bg-rose-50 border-rose-200 text-rose-600'
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${topping.isAvailable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          {topping.isAvailable !== false ? 'متوفر' : 'غير متوفر ❌'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
             </div>
 
           </div>
         )}
       </main>
+
 
       {/* --- POS THERMAL RECEIPT MODAL (فاتورة مبيعات لمحاكاة حرارية قابلة للطباعة) --- */}
       <AnimatePresence>
