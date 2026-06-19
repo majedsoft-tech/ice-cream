@@ -1158,12 +1158,12 @@ export default function App() {
   };
 
   const handleClearProcessedOnlineOrders = async () => {
-    const processedOrders = onlineOrders.filter(o => o.status === 'prepared' || o.status === 'cancelled');
+    const processedOrders = onlineOrders.filter(o => o.status === 'prepared' || o.status === 'cancelled' || o.status === 'received');
     if (processedOrders.length === 0) {
-      triggerNotice('لا توجد طلبات مكتملة أو ملغاة لحذفها حالياً.', 'info');
+      triggerNotice('لا توجد طلبات مكتملة أو مستلمة أو ملغاة لحذفها حالياً.', 'info');
       return;
     }
-    if (window.confirm(`هل تريد حذف جميع الطلبات المكتملة أو الملغاة عدد (${processedOrders.length}) نهائياً؟`)) {
+    if (window.confirm(`هل تريد حذف جميع الطلبات المكتملة أو المستلمة أو الملغاة عدد (${processedOrders.length}) نهائياً؟`)) {
       try {
         const batch = writeBatch(db);
         processedOrders.forEach(o => {
@@ -1344,10 +1344,18 @@ export default function App() {
     }
   };
 
-  function handleMarkOrderAsReceived() {
+  async function handleMarkOrderAsReceived() {
+    if (recentOnlineOrderId) {
+      try {
+        await setDoc(doc(db, 'online_orders', recentOnlineOrderId), { status: 'received' }, { merge: true });
+      } catch (e) {
+        console.error("Error setting order received status dynamically:", e);
+      }
+    }
     if (activeCustomerOrder) {
+      const receivedOrder = { ...activeCustomerOrder, status: 'received' as const };
       setMyPastOrders(prev => {
-        const updated = [activeCustomerOrder, ...prev.filter(o => o.id !== activeCustomerOrder.id)];
+        const updated = [receivedOrder, ...prev.filter(o => o.id !== activeCustomerOrder.id)];
         localStorage.setItem('my_past_orders_list', JSON.stringify(updated));
         return updated;
       });
@@ -3417,7 +3425,7 @@ export default function App() {
                 
                 {/* VIEW LAYOUT SWITCHERS */}
                 <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto font-sans">
-                  {onlineOrders.some(o => o.status === 'prepared' || o.status === 'cancelled') && (
+                  {onlineOrders.some(o => o.status === 'prepared' || o.status === 'cancelled' || o.status === 'received') && (
                     <button
                       type="button"
                       onClick={handleClearProcessedOnlineOrders}
@@ -3472,6 +3480,7 @@ export default function App() {
                       pending: { badgeBg: 'bg-amber-50 border-amber-200 text-amber-700 animate-pulse', label: '🕒 جديد قيد الانتظار' },
                       accepted: { badgeBg: 'bg-blue-50 border-blue-200 text-blue-700', label: '👨‍🍳 تم الاستلام وجاري التحضير' },
                       prepared: { badgeBg: 'bg-emerald-50 border-emerald-250 text-emerald-700', label: '🔔 تم التجهيز وجاهز للاستلام' },
+                      received: { badgeBg: 'bg-teal-100 border-teal-300 text-teal-800 font-extrabold', label: '✅ تم استلام الطلب' },
                       cancelled: { badgeBg: 'bg-red-50 border-red-200 text-red-700', label: '❌ ملغى' }
                     }[order.status] || { badgeBg: 'bg-slate-50 border-slate-200 text-slate-700', label: order.status };
 
@@ -3491,6 +3500,8 @@ export default function App() {
                             ? 'bg-blue-50/10 border-blue-300 shadow-sm'
                             : order.status === 'prepared'
                             ? 'bg-emerald-50/5 border-emerald-250 opacity-95'
+                            : order.status === 'received'
+                            ? 'bg-teal-50/30 border-teal-400 shadow-[0_4px_12px_rgba(13,148,136,0.06)]'
                             : 'bg-slate-50/85 border-slate-200 opacity-60'
                         }`}
                       >
@@ -3615,6 +3626,12 @@ export default function App() {
                             {order.status === 'prepared' && (
                               <div className="flex-1 bg-emerald-50 text-emerald-700 font-extrabold text-[10px] py-1.5 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-emerald-150">
                                 جاهز للاستلام وبانتظار العميل 🍦⏳
+                              </div>
+                            )}
+
+                            {order.status === 'received' && (
+                              <div className="flex-1 bg-teal-50 text-teal-800 font-black text-[10px] py-1.5 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-teal-200">
+                                تم الاستلام بنجاح وبسرعة 🎉🍬
                               </div>
                             )}
 
