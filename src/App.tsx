@@ -767,7 +767,7 @@ export default function App() {
         category: expenseCategory,
         amount: parseFloat(expenseAmount),
         date: expenseDate,
-        notes: expenseNotes.trim() || undefined,
+        notes: expenseNotes.trim() || '',
         createdAt: new Date().toISOString()
       };
 
