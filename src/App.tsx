@@ -1466,7 +1466,7 @@ export default function App() {
 
   if (viewMode === 'customer') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-amber-50/50 text-slate-800 font-sans antialiased pb-12 select-none border-8 border-white" dir="rtl">
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-amber-50/50 text-slate-800 font-sans antialiased pb-6 sm:pb-12 select-none border-2 sm:border-8 border-white" dir="rtl">
         {/* Decorative Ice Cream Border Accent */}
         <div className="h-2 bg-gradient-to-r from-pink-500 via-amber-400 to-emerald-400" />
 
@@ -1593,7 +1593,7 @@ export default function App() {
         <main className="max-w-7xl mx-auto px-4 mt-4 relative">
           {showPastOrders ? (
             /* --- CLIENT COMPLETED PAST ORDERS SCREEN --- */
-            <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6 animate-fadeIn text-right font-sans">
+            <div className="max-w-xl mx-auto bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-5 sm:space-y-6 animate-fadeIn text-right font-sans">
               <div className="flex justify-between items-center border-b-2 border-dashed border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">📋</span>
@@ -1667,7 +1667,7 @@ export default function App() {
             </div>
           ) : isOrdersStopped && !(recentOnlineOrderId && activeCustomerOrder) ? (
             /* --- ONLINE ORDERS STOPPED SCREEN --- */
-            <div className="max-w-xl mx-auto bg-white rounded-3xl p-10 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] text-center space-y-6 my-12 font-sans">
+            <div className="max-w-xl mx-auto bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] text-center space-y-5 sm:space-y-6 my-6 sm:my-12 font-sans">
               <div className="text-6xl animate-bounce">🍨🛑</div>
               <h2 className="text-2xl font-black text-rose-600">نعتذر منكم، استقبال الطلبات متوقف حالياً</h2>
               <p className="text-sm font-bold text-slate-500 leading-relaxed">
@@ -1680,7 +1680,7 @@ export default function App() {
             </div>
           ) : recentOnlineOrderId && activeCustomerOrder ? (
             /* --- SUBMITTED ORDER LIVE STATUS DIALOG --- */
-            <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-6">
+            <div className="max-w-2xl mx-auto bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-5 sm:space-y-6 animate-fadeIn">
               {/* Status Stepper visualization */}
               <div className="grid grid-cols-3 gap-2 py-4 relative">
                 {/* Connector lines behind */}
@@ -1876,7 +1876,7 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
                 {/* Right/Main Column: Items List */}
-                <div className="lg:col-span-7 bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                <div className="lg:col-span-7 bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
                   <div className="flex justify-between items-center border-b border-pink-100 pb-2">
                     <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2">١. الأكواب المصممة في سلتك</h3>
                     <button
@@ -1965,9 +1965,9 @@ export default function App() {
                 <div className="lg:col-span-12 xl:col-span-5 space-y-6">
                   
                   {/* Box 1: Customer Information / Pickup Panel */}
-                  <div className={`bg-white rounded-3xl p-6 border-4 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                  <div className={`bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 shadow-sm sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
                     !selfCustomerName.trim() 
-                      ? 'border-pink-500 ring-4 ring-pink-100 shadow-[8px_8px_0px_rgba(236,72,153,0.15)] bg-pink-50/5'
+                      ? 'border-pink-500 ring-4 ring-pink-100 shadow-md sm:shadow-[8px_8px_0px_rgba(236,72,153,0.15)] bg-pink-50/5'
                       : 'border-slate-800'
                   }`}>
                     <div className="flex items-center justify-between">
@@ -2004,9 +2004,9 @@ export default function App() {
                   </div>
 
                   {/* Box 2: Customer Payment Options Panel */}
-                  <div className={`bg-white rounded-3xl p-6 border-4 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                  <div className={`bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 shadow-sm sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
                     selfCustomerName.trim() && (!custPaymentMethod || (custPaymentMethod === 'card' && !custBankSubMethod))
-                      ? 'border-amber-500 ring-4 ring-amber-100 bg-amber-50/5 shadow-[8px_8px_0px_rgba(245,158,11,0.15)]'
+                      ? 'border-amber-500 ring-4 ring-amber-100 bg-amber-50/5 shadow-md sm:shadow-[8px_8px_0px_rgba(245,158,11,0.15)]'
                       : 'border-slate-800'
                   }`}>
                     <div className="flex items-center justify-between border-b border-dashed border-slate-100 pb-2.5">
@@ -2109,9 +2109,9 @@ export default function App() {
                   </div>
 
                   {/* Calculations breakdown block & Submit */}
-                  <div className={`bg-white rounded-3xl p-6 border-4 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                  <div className={`bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 shadow-sm sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
                     selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
-                      ? 'border-emerald-500 ring-4 ring-emerald-100 shadow-[8px_8px_0px_rgba(16,185,129,0.15)] bg-emerald-50/5'
+                      ? 'border-emerald-500 ring-4 ring-emerald-100 shadow-md sm:shadow-[8px_8px_0px_rgba(16,185,129,0.15)] bg-emerald-50/5'
                       : 'border-slate-800'
                   }`}>
                     <div className="flex justify-between items-center">
@@ -2212,7 +2212,7 @@ export default function App() {
             <div className="max-w-3xl mx-auto space-y-6">
               
               {/* STEP 1: CHOOSE CUP OR CONE */}
-              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+              <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
                 <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-r-4 border-pink-500 pr-3">
                   <span>1. نوع وعاء التقديم والتركيب</span>
                 </h2>
@@ -2225,11 +2225,11 @@ export default function App() {
                         key={opt.id}
                         disabled={!isAvailable}
                         onClick={() => setCustContainer(opt)}
-                        className={`text-center p-6 rounded-3xl border-4 transition-all relative overflow-hidden flex flex-col items-center justify-center gap-2.5 ${
+                        className={`text-center p-4 sm:p-6 rounded-2xl sm:rounded-3xl border-2 sm:border-4 transition-all relative overflow-hidden flex flex-col items-center justify-center gap-2.5 ${
                           !isAvailable
                             ? 'bg-slate-50 border-slate-200 opacity-40 cursor-not-allowed'
                             : isSelected
-                              ? 'bg-pink-50/20 border-pink-500 shadow-[8px_8px_0px_0px_rgba(236,72,153,0.1)] cursor-pointer'
+                              ? 'bg-pink-50/20 border-pink-500 shadow-md sm:shadow-[8px_8px_0px_0px_rgba(236,72,153,0.1)] cursor-pointer'
                               : 'bg-white border-slate-200 opacity-80 hover:opacity-100 cursor-pointer'
                         }`}
                       >
@@ -2256,7 +2256,7 @@ export default function App() {
               </div>
 
               {/* STEP 2: SCOOPS FLAVORS (1-3 SCOOPS) */}
-              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+              <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
                 <div className="flex justify-between items-center border-r-4 border-pink-500 pr-3 gap-2">
                   <h2 className="text-lg font-black text-slate-805">
                     <span>2. كرات نكهات الآيس كريم</span>
@@ -2313,7 +2313,7 @@ export default function App() {
               </div>
 
               {/* STEP 3: SELECT EXTENDED TOPPINGS */}
-              <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+              <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
                 <h2 className="text-lg font-black text-slate-800 flex items-center justify-between border-r-4 border-pink-500 pr-3">
                   <span>3. إضافة حب الرغبة والزينة الحصرية وافل وصوص</span>
                 </h2>
@@ -2430,7 +2430,7 @@ export default function App() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
                 transition={{ type: "spring", damping: 25, stiffness: 350 }}
-                className="relative bg-white w-full max-w-md rounded-[2.5rem] border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,0.15)] overflow-hidden p-6 text-center space-y-5 font-sans z-10"
+                className="relative bg-white w-full max-w-md rounded-3xl sm:rounded-[2.5rem] border-2 sm:border-4 border-slate-800 shadow-lg sm:shadow-[8px_8px_0px_rgba(30,41,59,0.15)] overflow-y-auto max-h-[95vh] p-4 sm:p-6 text-center space-y-4 sm:space-y-5 font-sans z-10"
               >
                 {/* Celebratory top section */}
                 <div className="relative pt-4">
@@ -5073,11 +5073,11 @@ export default function App() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full border-4 border-slate-850 overflow-hidden relative"
+              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl max-w-sm w-full border-2 sm:border-4 border-slate-850 overflow-hidden relative max-h-[90vh] flex flex-col"
               dir="rtl"
             >
               
-              <div id="receipt-content" className="bg-white p-1">
+              <div id="receipt-content" className="bg-white p-1 overflow-y-auto flex-1 pr-1 pl-1 scrollbar-thin">
                 {/* Receipt Header styling */}
                 <div className="text-center pb-4 border-b-2 border-dashed border-slate-350">
                   <span className="text-4xl">🍦</span>
