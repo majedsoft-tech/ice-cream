@@ -1701,7 +1701,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               {/* Previous Orders History Button */}
               <button
                 type="button"
@@ -1710,7 +1710,7 @@ export default function App() {
                   setIsCartOpen(false);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`relative flex items-center gap-2 font-black px-3 py-2 rounded-xl border-b-2 transition duration-200 shrink-0 self-center text-xs cursor-pointer hover:scale-105 hover:-translate-y-0.5 active:scale-95 ${
+                className={`relative flex items-center justify-center gap-2 font-black px-3 py-2 rounded-xl border-b-2 transition duration-200 shrink-0 w-full sm:w-auto order-2 sm:order-1 text-xs cursor-pointer hover:scale-105 hover:-translate-y-0.5 active:scale-95 ${
                   showPastOrders
                     ? 'bg-pink-100 text-pink-700 border-pink-300 ring-4 ring-pink-50'
                     : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-sm'
@@ -1745,7 +1745,7 @@ export default function App() {
                     repeat: Infinity,
                     ease: "easeInOut"
                   } : {}}
-                  className={`relative flex items-center gap-2 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 cursor-pointer transition duration-200 shrink-0 self-center hover:scale-105 hover:-translate-y-0.5 active:scale-95 ${
+                  className={`relative flex items-center justify-center gap-2 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 cursor-pointer transition duration-200 shrink-0 w-full sm:w-auto order-1 sm:order-2 hover:scale-105 hover:-translate-y-0.5 active:scale-95 ${
                     isCartGlowing && customerCart.length > 0
                       ? 'bg-gradient-to-r from-amber-500 via-pink-400 to-pink-600 border-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-4 ring-pink-300'
                       : 'bg-gradient-to-r from-pink-500 to-pink-600 border-pink-700 hover:bg-pink-600 hover:shadow-md'
