@@ -89,3 +89,14 @@ export interface OnlineOrder {
   paymentMethod?: 'cash' | 'card';
   bankSubMethod?: string;
 }
+
+export interface ExpenseRecord {
+  id: string;
+  category: string; // "مواد خام" | "مواد تشغيل" | "رواتب" | "إيجار" | "فواتير" | "تسويق" | "صيانة" | "أخرى"
+  title: string;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  notes?: string;
+  createdAt: string; // ISO String or similar
+}
+

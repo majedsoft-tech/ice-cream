@@ -20,5 +20,10 @@ service cloud.firestore {
     match /online_orders/{orderId} {
       allow read, write: if true;
     }
+
+    // Expenses collection
+    match /expenses/{expenseId} {
+      allow read, write: if true;
+    }
   }
 }

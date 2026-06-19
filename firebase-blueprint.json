@@ -49,6 +49,21 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "orderNumber", "customerName", "items", "subtotal", "toppingsTotal", "total", "status", "timestamp"]
+    },
+    "ExpenseRecord": {
+      "title": "ExpenseRecord",
+      "description": "An expense item recorded in the profits portal",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "category", "title", "amount", "date", "createdAt"]
     }
   },
   "firestore": {
@@ -63,6 +78,10 @@
     "/online_orders/{orderId}": {
       "schema": "OnlineOrder",
       "description": "Collection of customer self-service orders"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "ExpenseRecord",
+      "description": "Collection of recorded operating expenses"
     }
   }
 }

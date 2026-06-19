@@ -25,10 +25,11 @@ import {
   LayoutGrid,
   List,
   Link,
+  Trash2,
   Settings
 } from 'lucide-react';
 import { CONTAINER_OPTIONS, FLAVOR_OPTIONS, TOPPING_OPTIONS, DISCOUNTS, DEFAULT_CURRENCY } from './data';
-import { ContainerOption, FlavorOption, ToppingOption, CartItem, SaleRecord, OrderDiscount, OnlineOrder } from './types';
+import { ContainerOption, FlavorOption, ToppingOption, CartItem, SaleRecord, OrderDiscount, OnlineOrder, ExpenseRecord } from './types';
 import { db, OperationType, handleFirestoreError } from './firebase';
 import { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, onSnapshot, writeBatch } from 'firebase/firestore';
 
@@ -39,7 +40,7 @@ const cleanForFirestore = <T,>(obj: T): T => {
 
 export default function App() {
   // --- STATE ---
-  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices'>('OnlineOrders');
+  const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices' | 'Profits'>('OnlineOrders');
 
   const [containers, setContainers] = useState<ContainerOption[]>(() => {
     const saved = localStorage.getItem('ice_cream_containers');
@@ -582,6 +583,27 @@ export default function App() {
   const [salesHistory, setSalesHistory] = useState<SaleRecord[]>([]);
   const [completedOrder, setCompletedOrder] = useState<SaleRecord | null>(null);
 
+  // Expenses State
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+
+  // Add Expense Form State
+  const [expenseTitle, setExpenseTitle] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState('مواد خام');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [expenseNotes, setExpenseNotes] = useState('');
+
+  // Profits Tab Filters State
+  const [profitsDateRange, setProfitsDateRange] = useState<'today' | '7days' | '30days' | 'month' | 'custom' | 'all'>('all');
+  const [profitsStartDate, setProfitsStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [profitsEndDate, setProfitsEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [profitsCategoryFilter, setProfitsCategoryFilter] = useState('all');
+  const [profitsSearchQuery, setProfitsSearchQuery] = useState('');
+
   // Sales Ledger Filters State
   const [ledgerSearch, setLedgerSearch] = useState<string>('');
   const [ledgerPaymentMethodFilter, setLedgerPaymentMethodFilter] = useState<string>('all');
@@ -629,6 +651,153 @@ export default function App() {
 
     return matchesSearch && matchesPayment && matchesContainer && matchesSource;
   });
+
+  // --- PROFITS AND EXPENSES FILTERED CALCULATIONS AND MUTATORS ---
+  const filteredProfitsSales = useMemo(() => {
+    return salesHistory.filter(sale => {
+      // Parse date from sale.id (Unix millisecond timestamp)
+      let saleDateStr = '';
+      const ts = parseInt(sale.id);
+      if (!isNaN(ts) && ts > 1000000000000) {
+        saleDateStr = new Date(ts).toISOString().split('T')[0];
+      } else {
+        // Fallback to today
+        saleDateStr = new Date().toISOString().split('T')[0];
+      }
+
+      // Check date matching
+      if (profitsDateRange === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (saleDateStr !== todayStr) return false;
+      } else if (profitsDateRange === '7days') {
+        const threshold = new Date();
+        threshold.setDate(threshold.getDate() - 7);
+        const thresholdStr = threshold.toISOString().split('T')[0];
+        if (saleDateStr < thresholdStr) return false;
+      } else if (profitsDateRange === '30days') {
+        const threshold = new Date();
+        threshold.setDate(threshold.getDate() - 30);
+        const thresholdStr = threshold.toISOString().split('T')[0];
+        if (saleDateStr < thresholdStr) return false;
+      } else if (profitsDateRange === 'month') {
+        const today = new Date();
+        const startOfMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+        if (saleDateStr < startOfMonthStr) return false;
+      } else if (profitsDateRange === 'custom') {
+        if (saleDateStr < profitsStartDate || saleDateStr > profitsEndDate) return false;
+      }
+      return true;
+    });
+  }, [salesHistory, profitsDateRange, profitsStartDate, profitsEndDate]);
+
+  const filteredProfitsExpenses = useMemo(() => {
+    return expenses.filter(exp => {
+      // Category filter
+      if (profitsCategoryFilter !== 'all' && exp.category !== profitsCategoryFilter) return false;
+
+      // Search query
+      if (profitsSearchQuery.trim() !== '') {
+        const q = profitsSearchQuery.toLowerCase();
+        const matchesTitle = exp.title.toLowerCase().includes(q);
+        const matchesCategory = exp.category.toLowerCase().includes(q);
+        const matchesNotes = exp.notes && exp.notes.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesCategory && !matchesNotes) return false;
+      }
+
+      // Date Range filter
+      const expDateStr = exp.date; // YYYY-MM-DD
+      if (profitsDateRange === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (expDateStr !== todayStr) return false;
+      } else if (profitsDateRange === '7days') {
+        const threshold = new Date();
+        threshold.setDate(threshold.getDate() - 7);
+        const thresholdStr = threshold.toISOString().split('T')[0];
+        if (expDateStr < thresholdStr) return false;
+      } else if (profitsDateRange === '30days') {
+        const threshold = new Date();
+        threshold.setDate(threshold.getDate() - 30);
+        const thresholdStr = threshold.toISOString().split('T')[0];
+        if (expDateStr < thresholdStr) return false;
+      } else if (profitsDateRange === 'month') {
+        const today = new Date();
+        const startOfMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+        if (expDateStr < startOfMonthStr) return false;
+      } else if (profitsDateRange === 'custom') {
+        if (expDateStr < profitsStartDate || expDateStr > profitsEndDate) return false;
+      }
+
+      return true;
+    });
+  }, [expenses, profitsCategoryFilter, profitsSearchQuery, profitsDateRange, profitsStartDate, profitsEndDate]);
+
+  const profitStats = useMemo(() => {
+    const totalRev = filteredProfitsSales.reduce((sum, s) => sum + s.total, 0);
+    const totalExp = filteredProfitsExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const netProfit = totalRev - totalExp;
+    const profitMargin = totalRev > 0 ? (netProfit / totalRev) * 100 : 0;
+    
+    // Group expenses by category
+    const expensesByCategory: { [key: string]: number } = {};
+    filteredProfitsExpenses.forEach(exp => {
+      expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + exp.amount;
+    });
+
+    return {
+      totalRevenue: totalRev,
+      totalExpenses: totalExp,
+      netProfit,
+      profitMargin,
+      expensesByCategory
+    };
+  }, [filteredProfitsSales, filteredProfitsExpenses]);
+
+  const handleAddExpenseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expenseTitle.trim() || expenseAmount === '' || parseFloat(expenseAmount) <= 0) {
+      triggerNotice("يرجى ملء جميع الحقول الإلزامية وتحديد مبلغ صحيح أكبر من الصفر.", "error");
+      return;
+    }
+
+    try {
+      const expId = `EXP-${Date.now()}`;
+      const newExp: ExpenseRecord = {
+        id: expId,
+        title: expenseTitle.trim(),
+        category: expenseCategory,
+        amount: parseFloat(expenseAmount),
+        date: expenseDate,
+        notes: expenseNotes.trim() || undefined,
+        createdAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'expenses', expId), cleanForFirestore(newExp));
+      
+      // Reset form fields
+      setExpenseTitle('');
+      setExpenseAmount('');
+      setExpenseNotes('');
+      setExpenseDate(new Date().toISOString().split('T')[0]);
+
+      triggerNotice("تم تسجيل وإضافة المصروف بنجاح وسحابياً! 🎉", "success");
+    } catch (err) {
+      console.error("Error adding expense to Firestore:", err);
+      triggerNotice("عذراً، فشل في حفظ المصروف في قاعدة البيانات سحابياً.", "error");
+      handleFirestoreError(err, OperationType.WRITE, 'expenses');
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm("هل أنت متأكد من رغبتك في حذف هذا المصروف نهائياً؟")) return;
+    try {
+      await deleteDoc(doc(db, 'expenses', id));
+      triggerNotice("تم حذف المصروف بنجاح! 🗑️", "success");
+    } catch (err) {
+      console.error("Error deleting expense:", err);
+      triggerNotice("فشل في حذف المصروف من قاعدة البيانات سحابياً.", "error");
+      handleFirestoreError(err, OperationType.DELETE, `expenses/${id}`);
+    }
+  };
 
   // Generate WhatsApp message URL
   const getWhatsAppUrl = (order: SaleRecord) => {
@@ -758,10 +927,25 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'online_orders');
     });
 
+    // 4. Subscribe to "expenses" collection
+    const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+      const expensesList: ExpenseRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        expensesList.push(docSnap.data() as ExpenseRecord);
+      });
+      // Sort by date descending and then by createdAt descending
+      expensesList.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setExpenses(expensesList);
+    }, (error) => {
+      console.error("Error listening to expenses:", error);
+      handleFirestoreError(error, OperationType.LIST, 'expenses');
+    });
+
     return () => {
       unsubPrices();
       unsubSales();
       unsubOnlineOrders();
+      unsubExpenses();
     };
   }, []);
 
@@ -1526,7 +1710,7 @@ export default function App() {
                   setIsCartOpen(false);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`relative flex items-center gap-2 font-black px-3 py-2 rounded-xl border-b-2 transition duration-200 shrink-0 self-center text-xs cursor-pointer ${
+                className={`relative flex items-center gap-2 font-black px-3 py-2 rounded-xl border-b-2 transition duration-200 shrink-0 self-center text-xs cursor-pointer hover:scale-105 hover:-translate-y-0.5 active:scale-95 ${
                   showPastOrders
                     ? 'bg-pink-100 text-pink-700 border-pink-300 ring-4 ring-pink-50'
                     : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 shadow-sm'
@@ -1534,7 +1718,7 @@ export default function App() {
               >
                 <span className="text-sm">📋</span>
                 <span className="hidden sm:inline font-sans">طلباتي السابقة ({myPastOrders.length})</span>
-                <span className="sm:hidden font-sans text-[10px]">طلباتي السابق ({myPastOrders.length})</span>
+                <span className="sm:hidden font-sans text-[10px]">طلباتي السابقة ({myPastOrders.length})</span>
               </button>
 
               {/* Header Interactive Cart Button */}
@@ -1561,10 +1745,10 @@ export default function App() {
                     repeat: Infinity,
                     ease: "easeInOut"
                   } : {}}
-                  className={`relative flex items-center gap-2 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 cursor-pointer transition duration-200 shrink-0 self-center ${
+                  className={`relative flex items-center gap-2 text-white font-black px-3.5 py-2.5 rounded-xl border-b-2 cursor-pointer transition duration-200 shrink-0 self-center hover:scale-105 hover:-translate-y-0.5 active:scale-95 ${
                     isCartGlowing && customerCart.length > 0
                       ? 'bg-gradient-to-r from-amber-500 via-pink-400 to-pink-600 border-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.5)] ring-4 ring-pink-300'
-                      : 'bg-gradient-to-r from-pink-500 to-pink-600 border-pink-700 hover:bg-pink-600 hover:shadow-md active:scale-95'
+                      : 'bg-gradient-to-r from-pink-500 to-pink-600 border-pink-700 hover:bg-pink-600 hover:shadow-md'
                   }`}
                 >
                   <div className="relative">
@@ -2604,7 +2788,9 @@ export default function App() {
                       ? 'نشط'
                       : activeTab === 'History' 
                         ? salesStats.totalRevenue.toFixed(2) 
-                        : (containers.length + flavors.length + toppings.length).toFixed(0)}
+                        : activeTab === 'Prices'
+                          ? (containers.length + flavors.length + toppings.length).toFixed(0)
+                          : (salesStats.totalRevenue - expenses.reduce((acc, exp) => acc + exp.amount, 0)).toFixed(2)}
                 <span className="text-xs font-bold mr-1 text-pink-600">
                   {activeTab === 'OnlineOrders' ? 'طلب' : activeTab === 'OnlineSetup' ? 'بث' : activeTab === 'Prices' ? 'مادة' : 'ريال'}
                 </span>
@@ -2618,7 +2804,9 @@ export default function App() {
                       ? 'إعداد الرابط والباركود للجمهور'
                       : activeTab === 'History' 
                         ? 'إجمالي الدخل اليومي الصافي' 
-                        : 'قائمة الأسعار والمنتجات الفعالة'}
+                        : activeTab === 'Prices'
+                          ? 'قائمة الأسعار والمنتجات الفعالة'
+                          : 'صافي الأرباح المحتسبة الآن'}
               </div>
             </div>
 
@@ -2661,6 +2849,19 @@ export default function App() {
                     {salesHistory.length}
                   </span>
                 )}
+              </button>
+
+              {/* 3. الأرباح والمصروفات (Third) */}
+              <button
+                onClick={() => setActiveTab('Profits')}
+                className={`flex-1 sm:flex-initial py-1.5 px-3 rounded-lg font-black text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeTab === 'Profits'
+                    ? 'bg-rose-550 text-white bg-rose-500 shadow-[2px_2px_0px_0px_rgba(30,41,59,0.1)] border border-rose-600'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>الأرباح والمصروفات</span>
               </button>
 
               {/* 4. الاعدادات (Fourth) */}
@@ -4118,6 +4319,510 @@ export default function App() {
                   </table>
                 </div>
               )}
+            </div>
+
+          </div>
+        ) : activeTab === 'Profits' ? (
+          
+          /* --- TAB 2.5: PROFITS & EXPENSES PORTAL --- */
+          <div className="space-y-6 font-sans">
+            
+            {/* 1. Header Portal Banner */}
+            <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[8px_8px_0px_0px_rgba(30,41,59,0.1)] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl border-2 border-indigo-300">
+                  <TrendingUp className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-slate-800 text-lg">بوابة الأرباح والمصروفات والتقارير الذكية 📊</h2>
+                  <p className="text-xs text-slate-400 mt-1 font-bold">لوحة تحكم احتساب العوائد الصافية، وتتبع تكاليف التشغيل والمواد الخام والمبيعات بالزمن الحقيقي.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                <span>🔄 اتصال سحابي بالداتابيس:</span>
+                <span className="text-emerald-650 font-black animate-pulse">متصل ومحمي 🛡️</span>
+              </div>
+            </div>
+
+            {/* 2. Bento Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Card 1: NET PROFIT */}
+              <div className={`p-5 rounded-2xl border-4 flex flex-col justify-between transition ${
+                profitStats.netProfit >= 0 
+                  ? 'bg-emerald-50/70 border-emerald-500 shadow-[4px_4px_0px_rgba(16,185,129,0.15)] text-emerald-950' 
+                  : 'bg-rose-50/70 border-rose-500 shadow-[4px_4px_0px_rgba(244,63,94,0.15)] text-rose-950'
+              }`}>
+                <div>
+                  <div className="flex justify-between items-center text-xs font-black uppercase text-slate-500">
+                    <span>صافي الأرباح (الإيراد - المصروف)</span>
+                    <span className="text-xl">{profitStats.netProfit >= 0 ? '📈' : '📉'}</span>
+                  </div>
+                  <div className="mt-4 font-mono">
+                    <span className={`block text-3xl font-black ${profitStats.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {profitStats.netProfit.toFixed(2)} ر.س
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-1 block font-black">
+                      هامش الربح الحالي: <span className="font-bold underline">{profitStats.profitMargin.toFixed(1)}%</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: REVENUE */}
+              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between text-slate-800">
+                <div>
+                  <div className="flex justify-between items-center text-xs font-black uppercase text-slate-400">
+                    <span>إجمالي الإيرادات المبيعات</span>
+                    <span className="text-xl">💰</span>
+                  </div>
+                  <div className="mt-4 font-mono">
+                    <span className="block text-3xl font-black text-indigo-700">
+                      {profitStats.totalRevenue.toFixed(2)} ر.س
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-1 block font-black">
+                      دورة عمل مصفاة: {filteredProfitsSales.length} عملية مبيعات
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: EXPENSES */}
+              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between text-slate-800">
+                <div>
+                  <div className="flex justify-between items-center text-xs font-black uppercase text-slate-400">
+                    <span>إجمالي المصروفات المدفوعة</span>
+                    <span className="text-xl">💸</span>
+                  </div>
+                  <div className="mt-4 font-mono">
+                    <span className="block text-3xl font-black text-rose-700">
+                      {profitStats.totalExpenses.toFixed(2)} ر.س
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-1 block font-black">
+                      مسجلة سحابياً: {filteredProfitsExpenses.length} بند مصروف
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: SUMMARY & HEALTH INDICATOR */}
+              <div className="bg-white rounded-2xl p-5 border-4 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,0.1)] flex flex-col justify-between text-slate-850">
+                <div>
+                  <div className="flex justify-between items-center text-xs font-black uppercase text-slate-400">
+                    <span>مؤشر الحالة والجدوى</span>
+                    <span className="text-xl">🎯</span>
+                  </div>
+                  <div className="mt-1">
+                    <span className="text-[11px] font-black text-slate-600 block line-clamp-2 leading-relaxed h-[36px]">
+                      {profitStats.netProfit > 0 
+                        ? 'المحل يسير بمسار ربحي ممتاز ومشرق! استمر بضبط المصاريف وتطوير النكهات والمقاطع التسويقية.'
+                        : profitStats.netProfit === 0 && profitStats.totalRevenue === 0
+                          ? 'بانتظار تسجيل أولى حركات المبيعات أو إدراج المصاريف لعرض الجدوى ومؤشرات الربح الحقيقية.'
+                          : 'المصاريف التشغيلية أعلى من صافي مبيعات الفرع لهذه الفترة. راجع فواتير المواد الخام ورواتب التشغيل.'}
+                    </span>
+                    <div className="mt-2.5 w-full bg-slate-100 rounded-full h-2 overflow-hidden border">
+                      <div 
+                        className={`h-full transition-all ${profitStats.netProfit >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                        style={{ width: `${Math.min(100, Math.max(10, profitStats.profitMargin))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Filters Module */}
+            <div className="bg-slate-50 border-4 border-slate-800 rounded-3xl p-5 shadow-[4px_4px_0px_rgba(30,41,59,0.1)]">
+              <h3 className="text-xs font-black text-slate-705 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <span>🔍 فلاتر التقارير والتحكم بالأرباح والمصروفات</span>
+              </h3>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
+                {/* Time range quick filter */}
+                <div className="flex flex-col gap-1.5 lg:col-span-2">
+                  <span className="text-[10px] text-slate-500 font-extrabold">البحث بالفترة الزمنية للتقرير:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { id: 'all', label: 'الكل' },
+                      { id: 'today', label: 'اليوم' },
+                      { id: '7days', label: 'آخر 7 أيام' },
+                      { id: '30days', label: 'آخر 30 يوم' },
+                      { id: 'month', label: 'هذا الشهر' },
+                      { id: 'custom', label: 'تاريخ مخصص 📅' }
+                    ].map(btn => (
+                      <button
+                        key={btn.id}
+                        type="button"
+                        onClick={() => setProfitsDateRange(btn.id as any)}
+                        className={`text-[10px] sm:text-xs font-black px-3 py-1.5 rounded-xl border-2 transition cursor-pointer ${
+                          profitsDateRange === btn.id
+                            ? 'bg-rose-550 bg-rose-500 border-rose-600 text-white shadow-[2px_2px_0px_rgba(0,0,0,0.15)] animate-shimmer'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom date range fields (only editable if profitsDateRange === 'custom') */}
+                <div className={`grid grid-cols-2 gap-2 lg:col-span-2 transition ${profitsDateRange === 'custom' ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] text-slate-500 font-extrabold">تاريخ البداية:</span>
+                    <input
+                      type="date"
+                      value={profitsStartDate}
+                      onChange={(e) => setProfitsStartDate(e.target.value)}
+                      className="w-full bg-white border-2 border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-400"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] text-slate-500 font-extrabold">تاريخ النهاية:</span>
+                    <input
+                      type="date"
+                      value={profitsEndDate}
+                      onChange={(e) => setProfitsEndDate(e.target.value)}
+                      className="w-full bg-white border-2 border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3 pt-3 border-t border-dashed border-slate-200">
+                {/* Category filter */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] text-slate-500 font-extrabold">تصفية بنود المصروفات حسب فئتها:</span>
+                  <select
+                    value={profitsCategoryFilter}
+                    onChange={(e) => setProfitsCategoryFilter(e.target.value)}
+                    className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-400"
+                  >
+                    <option value="all">كل الفئات والمصاريف التشغيلية</option>
+                    <option value="مواد خام">🥛 مواد خام ومكونات</option>
+                    <option value="رواتب وأجور">💼 رواتب وأجور</option>
+                    <option value="إيجار المحل">🏢 إيجار المحل</option>
+                    <option value="فواتير وتشغيل">⚡ فواتير وتشغيل</option>
+                    <option value="علب وتعبئة">📦 علب وتعبئة</option>
+                    <option value="تسويق وإعلانات">📢 تسويق وإعلانات</option>
+                    <option value="صيانة">🔧 صيانة ونظافة</option>
+                    <option value="أخرى">🏷️ أخرى ومتنوعة</option>
+                  </select>
+                </div>
+
+                {/* Search query */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] text-slate-500 font-extrabold">البحث النصي عن المصروفات (البيان أو الملاحظات):</span>
+                  <input
+                    type="text"
+                    placeholder="ابحث عن: كهرباء، أجور، شراء وافل..."
+                    value={profitsSearchQuery}
+                    onChange={(e) => setProfitsSearchQuery(e.target.value)}
+                    className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Main Grid Container: Left (Form) & Right (Ledger & Analytics) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Form panel col: 4/12 */}
+              <div className="lg:col-span-4 bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[6px_6px_0px_rgba(30,41,59,0.1)]">
+                <h3 className="font-extrabold text-slate-800 text-sm mb-4 pb-2 border-b-2 border-slate-100 flex items-center gap-1.5">
+                  <span>📥 تسجيل بند مصرف جديد سحابياً</span>
+                </h3>
+                
+                <form onSubmit={handleAddExpenseSubmit} className="space-y-4 font-sans">
+                  {/* Category Field */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-slate-600 block">تصنيف المصروف التشغيلي *</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { name: 'مواد خام', emoji: '🥛' },
+                        { name: 'رواتب وأجور', emoji: '💼' },
+                        { name: 'إيجار المحل', emoji: '🏢' },
+                        { name: 'فواتير وتشغيل', emoji: '⚡' },
+                        { name: 'علب وتعبئة', emoji: '📦' },
+                        { name: 'تسويق وإعلانات', emoji: '📢' },
+                        { name: 'صيانة', emoji: '🔧' },
+                        { name: 'أخرى', emoji: '🏷️' }
+                      ].map(cat => (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => setExpenseCategory(cat.name)}
+                          className={`py-1.5 px-2 rounded-xl border text-[10px] font-bold text-center flex items-center gap-1 justify-center transition cursor-pointer ${
+                            expenseCategory === cat.name
+                              ? 'bg-rose-50 border-rose-500 text-rose-700 ring-2 ring-rose-200 font-black'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span>{cat.emoji}</span>
+                          <span>{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Title Field */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-slate-600 block" htmlFor="exp-title-input">بيان المصروف (اسم البند) *</label>
+                    <input
+                      id="exp-title-input"
+                      type="text"
+                      placeholder="مثال: فاتورة كهرباء الفرع لشهر يونيو"
+                      value={expenseTitle}
+                      onChange={(e) => setExpenseTitle(e.target.value)}
+                      required
+                      className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-rose-250 focus:border-rose-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Amount Field */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black text-slate-600 block" htmlFor="exp-amount-input">المبلغ المصروف بالريال *</label>
+                      <div className="relative">
+                        <input
+                          id="exp-amount-input"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={expenseAmount}
+                          onChange={(e) => setExpenseAmount(e.target.value)}
+                          required
+                          className="w-full bg-white border-2 border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-rose-250 focus:border-rose-500 focus:outline-none text-left font-mono"
+                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 font-sans">ر.س</span>
+                      </div>
+                    </div>
+
+                    {/* Date Field */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black text-slate-600 block" htmlFor="exp-date-input">تاريخ الصرف والواقعة *</label>
+                      <input
+                        id="exp-date-input"
+                        type="date"
+                        value={expenseDate}
+                        onChange={(e) => setExpenseDate(e.target.value)}
+                        required
+                        className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-rose-250 focus:border-rose-500 focus:outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Notes Field */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-slate-600 block" htmlFor="exp-notes-input">ملاحظات وتفاصيل إضافية (اختياري)</label>
+                    <textarea
+                      id="exp-notes-input"
+                      rows={2}
+                      placeholder="تفاصيل الشراء، رقم الفاتورة، اسم المرد وملاحظات أخرى تسجل سحابياً."
+                      value={expenseNotes}
+                      onChange={(e) => setExpenseNotes(e.target.value)}
+                      className="w-full bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-rose-250 focus:border-rose-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-rose-500 hover:bg-rose-600 border-b-4 border-rose-700 hover:border-b-2 text-white text-xs font-black rounded-xl cursor-pointer transition-all shadow-md flex items-center justify-center gap-2"
+                  >
+                    <span>تسجيل المصروف الفوري سحابياً</span>
+                    <span>💾</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Data panel col: 8/12 */}
+              <div className="lg:col-span-8 space-y-6">
+                
+                {/* Visual Analytics Block (Charts & Share Bars) */}
+                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[6px_6px_0px_rgba(30,41,59,0.1)]">
+                  <h3 className="font-extrabold text-slate-800 text-sm mb-4 pb-2 border-b-2 border-slate-100 flex items-center justify-between">
+                    <span>📊 تحليل ميزانية وتوزيع المصروفات الحالية</span>
+                    <span className="text-[10px] text-slate-400 font-bold">بناءً على فلاتر العرض والفرز النشطة</span>
+                  </h3>
+
+                  {filteredProfitsExpenses.length === 0 ? (
+                    <div className="py-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center">
+                      <span className="text-3xl mb-1.5">🥧</span>
+                      <p className="text-xs text-slate-500 font-extrabold">لا توجد مصاريف مدرجة لاحتساب نسب التوزيع</p>
+                      <p className="text-[10px] text-slate-400 mt-1">بمجرد تسجيل بند مصرف في الجهة اليمنى، سيظهر شريط التوزيع تلقائياً.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Distribution Shares Bars */}
+                      <div className="space-y-3 font-sans">
+                        <span className="text-[11px] font-black text-slate-550 block mb-2 underline leading-none uppercase">الحصص المئوية لتصنيفات المصروفات:</span>
+                        {[
+                          { name: 'مواد خام', emoji: '🥛', color: '#6366f1' },
+                          { name: 'رواتب وأجور', emoji: '💼', color: '#a855f7' },
+                          { name: 'إيجار المحل', emoji: '🏢', color: '#14b8a6' },
+                          { name: 'فواتير وتشغيل', emoji: '⚡', color: '#f59e0b' },
+                          { name: 'علب وتعبئة', emoji: '📦', color: '#0ea5e9' },
+                          { name: 'تسويق وإعلانات', emoji: '📢', color: '#ec4899' },
+                          { name: 'صيانة', emoji: '🔧', color: '#f43f5e' },
+                          { name: 'أخرى', emoji: '🏷️', color: '#64748b' }
+                        ].map(item => {
+                          const amt = profitStats.expensesByCategory[item.name] || 0;
+                          const pct = profitStats.totalExpenses > 0 ? (amt / profitStats.totalExpenses) * 100 : 0;
+                          if (amt === 0) return null;
+                          return (
+                            <div key={item.name} className="space-y-1 text-slate-800">
+                              <div className="flex justify-between items-center text-[10px] sm:text-[11px] font-extrabold">
+                                <span className="flex items-center gap-1.5">
+                                  <span>{item.emoji}</span>
+                                  <span>{item.name}</span>
+                                </span>
+                                <span className="font-mono">{pct.toFixed(1)}% <span className="text-slate-400 font-sans">({amt.toFixed(2)} ر.س)</span></span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border">
+                                <div 
+                                  className={`h-full transition-all`}
+                                  style={{ 
+                                    width: `${pct}%`,
+                                    backgroundColor: item.color
+                                  }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Visual Revenue VS Expense Comparison Bar */}
+                      <div className="flex flex-col justify-between bg-slate-50 p-4 rounded-2xl border-2 border-slate-200">
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-black text-slate-550 block underline uppercase">مخطط التناظر والمقارنة السريعة:</span>
+                          <p className="text-[10px] text-slate-450 leading-relaxed font-bold">هذا الشريط يمثل نسبة الصرف الكلية مقارنة بإجمالي العائدات والمدخول المحقق من نقاط البيع وتتبيثات الويب.</p>
+                        </div>
+                        
+                        <div className="my-4 space-y-2">
+                          {/* Revenue segment */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-extrabold text-slate-600">
+                              <span>💰 إجمالي الإيراد (100%):</span>
+                              <span className="font-mono text-indigo-700 font-black">{profitStats.totalRevenue.toFixed(2)} ر.س</span>
+                            </div>
+                            <div className="w-full bg-white rounded-full h-3 overflow-hidden border">
+                              <div className="h-full bg-indigo-500 w-full"></div>
+                            </div>
+                          </div>
+                          
+                          {/* Expense segment */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-extrabold text-slate-600">
+                              <span>💸 المصروف الكلي من الإيراد:</span>
+                              <span className="font-mono text-rose-700 font-black">
+                                {profitStats.totalRevenue > 0 
+                                  ? `${((profitStats.totalExpenses / profitStats.totalRevenue) * 100).toFixed(1)}%`
+                                  : '0.0%'
+                                } ({profitStats.totalExpenses.toFixed(2)} ر.س)
+                              </span>
+                            </div>
+                            <div className="w-full bg-white rounded-full h-3 overflow-hidden border">
+                              <div 
+                                className="h-full bg-rose-500 transition-all"
+                                style={{ width: `${Math.min(100, profitStats.totalRevenue > 0 ? (profitStats.totalExpenses / profitStats.totalRevenue) * 100 : 0)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-[10px] text-slate-500 font-extrabold border-t border-dashed border-slate-200 pt-2 text-center">
+                          {profitStats.totalRevenue >= profitStats.totalExpenses 
+                            ? `صافي الأرباح المحققة بعد الخصم: ${(profitStats.totalRevenue - profitStats.totalExpenses).toFixed(2)} ر.س 🎉`
+                            : `العجز التشغيلي الحالي للفترة: ${(profitStats.totalExpenses - profitStats.totalRevenue).toFixed(2)} ر.س ⚠️`
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Grid Item 2: Detailed Expenses Register (سجل حركة المصاريف) */}
+                <div className="bg-white rounded-3xl p-6 border-4 border-slate-800 shadow-[6px_6px_0px_rgba(30,41,59,0.1)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-2 border-b-2 border-slate-100">
+                    <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5 font-sans">
+                      <span>📑 كشف بنود ومستندات المصروفات السحابية</span>
+                    </h3>
+                    <span className="bg-slate-100 border text-slate-700 text-[10px] px-2.5 py-0.5 rounded-full font-black self-start">
+                      عرض {filteredProfitsExpenses.length} من أصل {expenses.length} بند
+                    </span>
+                  </div>
+
+                  {filteredProfitsExpenses.length === 0 ? (
+                    <div className="py-16 text-center flex flex-col items-center justify-center bg-slate-50 border-4 border-dashed border-slate-200 rounded-3xl">
+                      <span className="text-4xl mb-2">🔍</span>
+                      <p className="text-sm font-black text-slate-700">لا يوجد حركات مصروفات تطابق تصفيتك</p>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm font-bold">يرجى تغيير فلاتر العرض أو فرز الفئات، أو قم بإدراج بند مصروف جديد من خلال النموذج الجانبي.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[650px] text-right text-xs">
+                        <thead>
+                          <tr className="border-b-4 border-slate-800 text-slate-400 font-extrabold uppercase text-[10px]">
+                            <th className="pb-3 text-right">التاريخ واليوم</th>
+                            <th className="pb-3 text-right">فئة المصروف</th>
+                            <th className="pb-3 text-right">اسم وبيان المصروف</th>
+                            <th className="pb-3 text-right">الملاحظات والشرح</th>
+                            <th className="pb-3 text-left">المبلغ</th>
+                            <th className="pb-3 text-center">إجراء Delete</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans text-xs">
+                          {filteredProfitsExpenses.map((exp) => {
+                            const detailsMap: { [key: string]: { emoji: string; color: string; bg: string; text: string } } = {
+                              'مواد خام': { emoji: '🥛', color: 'indigo', bg: 'bg-indigo-50 border-indigo-200', text: 'text-indigo-700' },
+                              'رواتب وأجور': { emoji: '💼', color: 'purple', bg: 'bg-purple-50 border-purple-200', text: 'text-purple-700' },
+                              'إيجار المحل': { emoji: '🏢', color: 'teal', bg: 'bg-teal-50 border-teal-200', text: 'text-teal-700' },
+                              'فواتير وتشغيل': { emoji: '⚡', color: 'amber', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700' },
+                              'علب وتعبئة': { emoji: '📦', color: 'sky', bg: 'bg-sky-50 border-sky-200', text: 'text-sky-700' },
+                              'تسويق وإعلانات': { emoji: '📢', color: 'pink', bg: 'bg-pink-50 border-pink-200', text: 'text-pink-700' },
+                              'صيانة': { emoji: '🔧', color: 'rose', bg: 'bg-rose-50 border-rose-200', text: 'text-rose-700' },
+                              'أخرى': { emoji: '🏷️', color: 'slate', bg: 'bg-slate-50 border-slate-200', text: 'text-slate-700' }
+                            };
+                            const details = detailsMap[exp.category] || detailsMap['أخرى'];
+                            return (
+                              <tr key={exp.id} className="hover:bg-slate-50/70 transition">
+                                <td className="py-3.5 font-bold font-mono text-slate-550">
+                                  {exp.date}
+                                </td>
+                                <td className="py-3.5">
+                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black ${details.bg} ${details.text}`}>
+                                    <span>{details.emoji}</span>
+                                    <span>{exp.category}</span>
+                                  </span>
+                                </td>
+                                <td className="py-3.5 font-black text-slate-800">
+                                  {exp.title}
+                                </td>
+                                <td className="py-3.5 text-slate-400 font-bold max-w-[180px] truncate" title={exp.notes}>
+                                  {exp.notes || '---'}
+                                </td>
+                                <td className="py-3.5 font-mono font-black text-rose-650 text-left text-[13px]">
+                                  -{exp.amount.toFixed(2)} ر.س
+                                </td>
+                                <td className="py-3.5 text-center">
+                                  <button
+                                    onClick={() => handleDeleteExpense(exp.id)}
+                                    className="p-1.5 bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 rounded-lg hover:border-rose-400 transition cursor-pointer"
+                                    title="حذف هذا المصروف الصادر سحابياً"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+              </div>
             </div>
 
           </div>
