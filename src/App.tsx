@@ -1725,32 +1725,32 @@ export default function App() {
                 )}
                 {activeCustomerOrder.status === 'prepared' && (
                   <div className="space-y-4 flex flex-col items-center">
-                    <p className="text-base font-black text-emerald-655 animate-bounce text-center">🍦✨ طلبك البارد الرائع جاهز ومكتمل للاستلام في طابور المحل! هنيئاً وعافية مقدماً.</p>
+                    <p className="text-base font-black text-blue-600 animate-bounce text-center">🍦✨ طلبك البارد الرائع جاهز ومكتمل للاستلام في طابور المحل! هنيئاً وعافية مقدماً.</p>
                     <p className="text-xs text-slate-550 font-bold text-center">يرجى تمرير رقم طلبك <span className="font-mono text-pink-600 font-extrabold">{activeCustomerOrder.orderNumber}</span> للبائع وسداد القيمة {activeCustomerOrder.total.toFixed(2)} ر.س واستلام الآيس كريم!</p>
                     
                     {/* Order Received Button moved above the automatic redirect countdown */}
                     <button
                       onClick={() => handleMarkOrderAsReceived()}
-                      className="w-full max-w-sm bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs py-4 rounded-xl border-b-4 border-emerald-700 hover:border-emerald-800 transition text-center shadow-lg cursor-pointer flex items-center justify-center gap-2 animate-bounce mt-2"
+                      className="w-full max-w-sm bg-blue-500 hover:bg-blue-600 text-white font-black text-xs py-4 rounded-xl border-b-4 border-blue-700 hover:border-blue-800 transition text-center shadow-lg cursor-pointer flex items-center justify-center gap-2 animate-bounce mt-2"
                     >
                       <span>✅</span>
                       <span>تم استلام الطلب - العودة للتصميم 🍦</span>
                     </button>
 
                     {preparedCountdown !== null && (
-                      <div className="bg-emerald-50 text-emerald-800 p-4 rounded-2xl border-2 border-emerald-200 inline-flex flex-col items-center justify-center gap-2 font-sans mt-3 text-center mx-auto max-w-sm">
+                      <div className="bg-blue-50 text-blue-800 p-4 rounded-2xl border-2 border-blue-200 inline-flex flex-col items-center justify-center gap-2 font-sans mt-3 text-center mx-auto max-w-sm">
                         <span className="text-xs font-black flex items-center justify-center gap-1.5 flex-wrap">
                           <span className="animate-spin text-sm">⏳</span>
                           <span>التحول التلقائي لطلباتك السابقة تم خلال:</span>
-                          <span className="font-mono text-xs text-pink-600 font-extrabold px-2 py-0.5 bg-white rounded border border-emerald-300 min-w-[2.5rem] inline-block">{preparedCountdown}ث</span>
+                          <span className="font-mono text-xs text-pink-600 font-extrabold px-2 py-0.5 bg-white rounded border border-blue-300 min-w-[2.5rem] inline-block">{preparedCountdown}ث</span>
                         </span>
                         {/* Beautiful progress indicator bar */}
-                        <div className="w-48 bg-emerald-200 h-1.5 rounded-full overflow-hidden mt-1">
+                        <div className="w-48 bg-blue-200 h-1.5 rounded-full overflow-hidden mt-1">
                           <motion.div 
                             initial={{ width: '100%' }}
                             animate={{ width: `${(preparedCountdown / 10) * 100}%` }}
                             transition={{ duration: 1, ease: 'linear' }}
-                            className="bg-emerald-600 h-full"
+                            className="bg-blue-600 h-full"
                           />
                         </div>
                       </div>
@@ -3405,9 +3405,9 @@ export default function App() {
                     <span className="text-xs font-black font-mono text-blue-600">{onlineOrders.filter(o => o.status === 'accepted').length}</span>
                   </div>
                   
-                  <div className="bg-emerald-50/50 border-2 border-emerald-200 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
-                    <span className="text-[10.5px] font-bold text-emerald-700">جاهزة للاستلام ✅</span>
-                    <span className="text-xs font-black font-mono text-emerald-600">{onlineOrders.filter(o => o.status === 'prepared').length}</span>
+                  <div className="bg-blue-100/60 border-2 border-blue-300 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
+                    <span className="text-[10.5px] font-bold text-blue-850">جاهزة للاستلام 🔔</span>
+                    <span className="text-xs font-black font-mono text-blue-700">{onlineOrders.filter(o => o.status === 'prepared').length}</span>
                   </div>
                   
                   <div className="bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2 flex-1 sm:flex-initial">
@@ -3479,7 +3479,7 @@ export default function App() {
                     const statusConfig = {
                       pending: { badgeBg: 'bg-amber-50 border-amber-200 text-amber-700 animate-pulse', label: '🕒 جديد قيد الانتظار' },
                       accepted: { badgeBg: 'bg-blue-50 border-blue-200 text-blue-700', label: '👨‍🍳 تم الاستلام وجاري التحضير' },
-                      prepared: { badgeBg: 'bg-emerald-50 border-emerald-250 text-emerald-700', label: '🔔 تم التجهيز وجاهز للاستلام' },
+                      prepared: { badgeBg: 'bg-blue-100 border-blue-350 text-blue-800 font-extrabold', label: '🔔 جاهز للاستلام وبانتظار العميل' },
                       received: { badgeBg: 'bg-teal-100 border-teal-300 text-teal-800 font-extrabold', label: '✅ تم استلام الطلب' },
                       cancelled: { badgeBg: 'bg-red-50 border-red-200 text-red-700', label: '❌ ملغى' }
                     }[order.status] || { badgeBg: 'bg-slate-50 border-slate-200 text-slate-700', label: order.status };
@@ -3499,7 +3499,7 @@ export default function App() {
                             : order.status === 'accepted'
                             ? 'bg-blue-50/10 border-blue-300 shadow-sm'
                             : order.status === 'prepared'
-                            ? 'bg-emerald-50/5 border-emerald-250 opacity-95'
+                            ? 'bg-blue-50/15 border-blue-300 opacity-95 shadow-[0_4px_12px_rgba(59,130,246,0.05)]'
                             : order.status === 'received'
                             ? 'bg-teal-50/30 border-teal-400 shadow-[0_4px_12px_rgba(13,148,136,0.06)]'
                             : 'bg-slate-50/85 border-slate-200 opacity-60'
@@ -3624,7 +3624,7 @@ export default function App() {
                             )}
 
                             {order.status === 'prepared' && (
-                              <div className="flex-1 bg-emerald-50 text-emerald-700 font-extrabold text-[10px] py-1.5 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-emerald-150">
+                              <div className="flex-1 bg-blue-50 text-blue-700 font-extrabold text-[10px] py-1.5 px-2.5 inline-flex items-center justify-center rounded-lg text-center border border-blue-150">
                                 جاهز للاستلام وبانتظار العميل 🍦⏳
                               </div>
                             )}
