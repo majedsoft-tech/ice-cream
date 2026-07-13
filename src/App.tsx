@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   IceCream,
@@ -25,7 +25,6 @@ import {
   LayoutGrid,
   List,
   Link,
-  Trash2,
   Settings
 } from 'lucide-react';
 import { CONTAINER_OPTIONS, FLAVOR_OPTIONS, TOPPING_OPTIONS, DISCOUNTS, DEFAULT_CURRENCY } from './data';
@@ -479,7 +478,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'seller' | 'customer'>(() => {
     return (window.location.hash === '#/seller' || window.location.hash === '#seller') ? 'seller' : 'customer';
   });
-  const [customerCart, setCustomerCart] = useState<CartItem[]>([]);
+  const [savedCustomerCart, setSavedCustomerCart] = useState<CartItem[]>([]);
   const [selfCustomerName, setSelfCustomerName] = useState<string>('');
   const [recentOnlineOrderId, setRecentOnlineOrderId] = useState<string | null>(() => {
     return localStorage.getItem('recent_online_order_id') || null;
@@ -538,6 +537,26 @@ export default function App() {
   const [custFlavors, setCustFlavors] = useState<FlavorOption[]>([]);
   const [custToppings, setCustToppings] = useState<ToppingOption[]>([]);
   const [custQuantity, setCustQuantity] = useState<number>(1);
+
+  const customerCart = useMemo(() => {
+    if (!custContainer) {
+      return savedCustomerCart;
+    }
+    const basePrice = custContainer.price + custFlavors.reduce((sum, f) => sum + f.price, 0);
+    const toppingsPrice = custToppings.reduce((sum, t) => sum + t.price, 0);
+
+    const activeItem: CartItem = {
+      id: 'ACTIVE-AUTO-ITEM',
+      container: custContainer,
+      flavors: [...custFlavors],
+      toppings: [...custToppings],
+      quantity: custQuantity,
+      basePrice,
+      toppingsPrice,
+      itemTotal: (basePrice + toppingsPrice) * custQuantity
+    };
+    return [...savedCustomerCart, activeItem];
+  }, [savedCustomerCart, custContainer, custFlavors, custToppings, custQuantity]);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState<boolean>(false);
   const [isCartGlowing, setIsCartGlowing] = useState<boolean>(false);
@@ -1145,29 +1164,10 @@ export default function App() {
     const subtotal = productsSubtotal + toppingsSubtotal;
     const totalItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-    // --- AUTOMATIC DIVERSITY AND QUANTITY DISCOUNT ---
-    // Rule: "خصم الطلبات المتنوعة":
-    // 1. If user buys 3 or more total cups/cones -> 10% Discount
-    // 2. OR, if they order at least one Cup and at least one Cone inside the same order (Diverse order) -> 12% Discount!
+    // --- AUTOMATIC DIVERSITY AND QUANTITY DISCOUNT (DISABLED) ---
     let autoDiscountPercent = 0;
-    let autoDiscountName = '';
-
-    const hasCup = cart.some(item => item.container.id === 'cup');
-    const hasCone = cart.some(item => item.container.id === 'cone');
-    const hasDifferentFlavors = cart.length > 1;
-
-    if (hasCup && hasCone) {
-      autoDiscountPercent = 12;
-      autoDiscountName = 'خصم الطلب المتنوع (كوب + بسكوت)';
-    } else if (totalItemsCount >= 3) {
-      autoDiscountPercent = 10;
-      autoDiscountName = 'خصم الكمية الكبيرة (3 قطع فأكثر)';
-    } else if (hasDifferentFlavors) {
-      autoDiscountPercent = 5;
-      autoDiscountName = 'خصم تشكيلة نكهات سريعة';
-    }
-
-    const autoDiscountAmount = (subtotal * autoDiscountPercent) / 100;
+    let autoDiscountName = 'بدون خصم تلقائي';
+    const autoDiscountAmount = 0;
 
     // Manual Selected Discount
     const manualDiscountAmount = Math.min(manualDiscountVal, subtotal - autoDiscountAmount);
@@ -1369,26 +1369,11 @@ export default function App() {
     const total = subtotal + toppingsSubtotal;
     const totalItemsCount = customerCart.reduce((sum, item) => sum + item.quantity, 0);
 
-    // Apply auto discounts same as POS!
+    // Apply auto discounts same as POS! (DISABLED)
     let autoDiscountPercent = 0;
-    let autoDiscountName = '';
-    const hasCup = customerCart.some(item => item.container.id === 'cup');
-    const hasCone = customerCart.some(item => item.container.id === 'cone');
-    const hasDifferentFlavors = customerCart.length > 1;
-
-    if (hasCup && hasCone) {
-      autoDiscountPercent = 12;
-      autoDiscountName = 'خصم الطلب المتنوع (كوب + بسكوت)';
-    } else if (totalItemsCount >= 3) {
-      autoDiscountPercent = 10;
-      autoDiscountName = 'خصم الكمية الكبيرة (3 قطع فأكثر)';
-    } else if (hasDifferentFlavors) {
-      autoDiscountPercent = 5;
-      autoDiscountName = 'خصم تشكيلة نكهات سريعة';
-    }
-
-    const autoDiscountAmount = (total * autoDiscountPercent) / 100;
-    const finalTotal = Math.max(0, total - autoDiscountAmount);
+    let autoDiscountName = 'بدون خصم تلقائي';
+    const autoDiscountAmount = 0;
+    const finalTotal = total;
 
     return {
       subtotal,
@@ -1401,13 +1386,16 @@ export default function App() {
     };
   }, [customerCart]);
 
-   const handleAddCustItemToCart = () => {
+  // Save current cup design to cart and start configuring a new one
+  const handleSaveAndAddAnother = () => {
     if (!custContainer) {
-      triggerNotice('الرجاء اختيار نوع وعاء التقديم والتركيب أولاً لتخصيص كوبك! 🍨', 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      triggerNotice('يرجى اختيار وعاء التقديم والمكونات بالأعلى لتصميم كوب آخر! 🍨', 'info');
       return;
     }
     if (custFlavors.length === 0) {
-      triggerNotice('الرجاء اختيار نكهة واحدة على الأقل لكوكبة الآيس كريم! 🍦', 'error');
+      triggerNotice('الرجاء اختيار نكهة واحدة على الأقل لكوبك الحالي! 🍦', 'error');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -1425,41 +1413,53 @@ export default function App() {
       itemTotal: (basePrice + toppingsPrice) * custQuantity
     };
 
-    setCustomerCart((prev) => [...prev, newItem]);
+    setSavedCustomerCart((prev) => [...prev, newItem]);
     
-    // Set confirmation and visual feedback states
-    setLastAddedCustItem(newItem);
-    setShowCustAddConfirmModal(true);
-    setIsCartGlowing(true);
-    
-    // Smoothly scroll to the beginning/top of the page
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    // Clear customizer state for next item configuration
+    // Clear customizer state for next cup design
     setCustContainer(null);
     setCustFlavors([]);
     setCustToppings([]);
     setCustQuantity(1);
-    triggerNotice('تمت إضافة النكهة الفخمة لسلتك! قم بإضافة المزيد أو تأكيد طلبك 🍨✨', 'success');
+
+    triggerNotice('تم حفظ كوب الآيس كريم في السلة بنجاح! يمكنك الآن تصميم كوب آخر بالأعلى. ✨🍨', 'success');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleRemoveCustItemFromCart = (index: number) => {
-    setCustomerCart((prev) => prev.filter((_, i) => i !== index));
-    triggerNotice('تمت إزالة الصنف من السلة.', 'info');
+    const item = customerCart[index];
+    if (!item) return;
+
+    if (item.id === 'ACTIVE-AUTO-ITEM') {
+      setCustContainer(null);
+      setCustFlavors([]);
+      setCustToppings([]);
+      setCustQuantity(1);
+      triggerNotice('تم تفريغ تصميم الآيس كريم الحالي.', 'info');
+    } else {
+      setSavedCustomerCart((prev) => prev.filter((savedItem) => savedItem.id !== item.id));
+      triggerNotice('تمت إزالة الكوب المحفوظ من السلة.', 'info');
+    }
   };
 
   const handleUpdateCustItemQty = (index: number, newQty: number) => {
     if (newQty < 1) return;
-    setCustomerCart((prev) => prev.map((item, i) => {
-      if (i === index) {
-        return {
-          ...item,
-          quantity: newQty,
-          itemTotal: (item.basePrice + item.toppingsPrice) * newQty
-        };
-      }
-      return item;
-    }));
+    const item = customerCart[index];
+    if (!item) return;
+
+    if (item.id === 'ACTIVE-AUTO-ITEM') {
+      setCustQuantity(newQty);
+    } else {
+      setSavedCustomerCart((prev) => prev.map((savedItem) => {
+        if (savedItem.id === item.id) {
+          return {
+            ...savedItem,
+            quantity: newQty,
+            itemTotal: (savedItem.basePrice + savedItem.toppingsPrice) * newQty
+          };
+        }
+        return savedItem;
+      }));
+    }
   };
 
   const handleSubmitCustomerOrder = async () => {
@@ -1497,7 +1497,11 @@ export default function App() {
       await setDoc(doc(db, 'online_orders', orderId), cleanForFirestore(newOnlineOrder));
       localStorage.setItem('recent_online_order_id', orderId);
       setRecentOnlineOrderId(orderId);
-      setCustomerCart([]);
+      setCustContainer(null);
+      setCustFlavors([]);
+      setCustToppings([]);
+      setCustQuantity(1);
+      setSavedCustomerCart([]);
       setIsCartOpen(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       triggerNotice('تم إرسال طلبك السحابي للمطبخ بنجاح! 🚀 تمتع بمشاهدة حالة التحضير الحية.', 'success');
@@ -1727,10 +1731,14 @@ export default function App() {
                   type="button"
                   id="cart-overlay-button"
                   onClick={() => {
-                    setIsCartOpen(!isCartOpen);
                     setIsCartGlowing(false);
                     setShowPastOrders(false); // Close past orders if opening the cart
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    setTimeout(() => {
+                      const el = document.getElementById('customer-cart-and-checkout-section');
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 50);
                   }}
                   animate={isCartGlowing && customerCart.length > 0 ? {
                     scale: [1, 1.1, 1, 1.1, 1],
@@ -2029,7 +2037,7 @@ export default function App() {
                   )
                 )}
 
-                {(activeCustomerOrder.status === 'pending' || activeCustomerOrder.status === 'accepted') && (
+                {activeCustomerOrder.status === 'pending' && (
                   <button
                     type="button"
                     onClick={handleStartNewCustomerOrder}
@@ -2052,7 +2060,7 @@ export default function App() {
               </div>
 
             </div>
-          ) : isCartOpen ? (
+          ) : false ? (
             /* --- CLIENT INLINE SHOPPING CART --- */
             <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
               
@@ -2393,7 +2401,7 @@ export default function App() {
             </div>
           ) : (
             /* --- CLIENT ICE CREAM CUSTOMIZATION BUILDER INTERFACE --- */
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-8">
               
               {/* STEP 1: CHOOSE CUP OR CONE */}
               <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
@@ -2540,41 +2548,317 @@ export default function App() {
                 </div>
               </div>
 
-              {/* CONFIGURED CUSTOMIZER ACTIONS PANEL */}
-              <div className="bg-gradient-to-r from-pink-50 to-amber-50/60 rounded-3xl p-5 border-2 border-pink-100/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-slate-800">هل أكملت تصميم كوب آيس كريم أحلامك الفاخر؟</h3>
-                  <p className="text-[11px] text-slate-500 font-bold mt-1 max-w-md">أضف هذا المزيج الرائع لسلتك لتستطيع تعبئة طلبك وإرساله فوراً للمطبخ!</p>
+              {/* --- INTEGRATED SHOPPING CART AND CHECKOUT DETAILS --- */}
+              <div id="customer-cart-and-checkout-section" className="space-y-6 pt-6 border-t-4 border-dashed border-pink-200/60 mt-8">
+                <div className="text-right">
+                  <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-r-4 border-pink-500 pr-3">
+                    <span>🛒 سلة طلباتك ومعلومات الدفع الكلي</span>
+                  </h2>
+                  <p className="text-slate-400 font-bold text-[11px] mt-1">يتم تحديث تفاصيل الفاتورة تلقائياً من خياراتك أعلاه! أدخل اسمك الكريم واختر طريقة الدفع لتأكيد الطلب.</p>
                 </div>
 
-                <div className="flex items-center gap-4 w-full md:w-auto font-sans text-xs">
-                  {/* Quantity counter */}
-                  <div className="flex items-center bg-white rounded-xl overflow-hidden border border-slate-200 h-10 shrink-0 shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setCustQuantity(q => Math.max(1, q - 1))}
-                      className="px-2.5 hover:bg-slate-50 text-slate-600 font-black h-full transition w-8 text-center cursor-pointer"
-                    >
-                      -
-                    </button>
-                    <span className="px-1 font-mono font-black text-xs text-pink-600">{custQuantity} أكواب</span>
-                    <button
-                      type="button"
-                      onClick={() => setCustQuantity(q => q + 1)}
-                      className="px-2.5 hover:bg-slate-50 text-slate-600 font-black h-full transition w-8 text-center cursor-pointer"
-                    >
-                      +
-                    </button>
+                {customerCart.length === 0 ? (
+                  <div className="text-center py-12 px-4 text-slate-450 space-y-4 bg-white border-2 border-dashed border-slate-200 rounded-3xl shadow-sm max-w-4xl mx-auto">
+                    <span className="text-5xl block animate-bounce">🍨</span>
+                    <h4 className="text-xs font-black text-slate-700 font-sans">بانتظار تصميم آيس كريم أحلامك الفاخر!</h4>
+                    <p className="text-[10px] font-bold text-slate-400 max-w-md mx-auto leading-relaxed font-sans">
+                      ابدأ باختيار الوعاء في الخطوة الأولى أعلاه، ثم أضف نكهاتك المفضلة والزينة لتعبئة سلة المشتريات وفاتورة الدفع الإجمالية تلقائياً في التو واللحظة!
+                    </p>
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-right">
+                    
+                    {/* Right/Main Column: Items List */}
+                    <div className="lg:col-span-7 bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4">
+                      <div className="flex justify-between items-center border-b border-pink-100 pb-2">
+                        <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2">١. الأكواب المصممة في سلتك ({customerCart.length})</h3>
+                        <button
+                          type="button"
+                          onClick={handleSaveAndAddAnother}
+                          className="bg-pink-100 hover:bg-pink-200 text-pink-700 font-extrabold text-[10px] py-1 px-2.5 rounded-xl transition flex items-center gap-1 cursor-pointer border border-pink-200 font-sans"
+                          title="حفظ الكوب الحالي في السلة للبدء بتصميم كوب جديد"
+                        >
+                          <span>➕ كوب آخر</span>
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {customerCart.map((item, index) => (
+                          <div key={index} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden flex flex-col justify-between">
+                            <button
+                              onClick={() => handleRemoveCustItemFromCart(index)}
+                              className="absolute top-2.5 left-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-black w-7 h-7 rounded-xl transition flex items-center justify-center cursor-pointer border border-red-200 shadow-sm"
+                              title="حذف هذا الصنف"
+                            >
+                              ✕
+                            </button>
+                            
+                            <div className="text-right pl-8">
+                              <span className="text-xs font-black text-slate-800 block">{item.container.name}</span>
+                              <div className="text-[10px] text-slate-500 font-bold mt-1.5 leading-relaxed">
+                                النكهات: {item.flavors.map(f => f.name).join('، ')}
+                              </div>
+                              {item.toppings.length > 0 && (
+                                <div className="text-[10px] text-emerald-600 font-black mt-1 leading-relaxed">
+                                  إضافات: {item.toppings.map(t3 => t3.name).join(' + ')}
+                                </div>
+                              )}
+                            </div>
 
-                  <button
-                    onClick={handleAddCustItemToCart}
-                    className="flex-1 md:flex-initial bg-pink-500 hover:bg-pink-600 active:scale-95 text-white font-black text-xs h-10 px-5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-[0_2px_8px_rgba(236,72,153,0.15)] hover:shadow-[0_4px_12px_rgba(236,72,153,0.3)] duration-200"
-                  >
-                    <span>➕</span>
-                    <span>إضافة هذا الآيس كريم للسلة</span>
-                  </button>
-                </div>
+                            <div className="flex items-center justify-between border-t border-dashed pt-3 mt-1.5 font-sans">
+                              {/* Quantity Modifications */}
+                              <div className="flex items-center bg-white rounded-xl overflow-hidden border-2 border-slate-200 shadow-sm h-8">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateCustItemQty(index, item.quantity - 1)}
+                                  className="w-8 h-full hover:bg-slate-50 text-xs font-extrabold transition text-slate-600"
+                                >
+                                  -
+                                </button>
+                                <span className="px-3 font-mono text-xs font-black text-slate-800 bg-slate-50/55 h-full flex items-center justify-center border-x border-slate-200 min-w-8">
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateCustItemQty(index, item.quantity + 1)}
+                                  className="w-8 h-full hover:bg-slate-50 text-xs font-extrabold transition text-slate-600"
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <span className="font-mono text-xs font-black text-slate-805">{(item.itemTotal).toFixed(2)} ر.س</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Left Column: Shipment Contact Details & Pricing Summary */}
+                    <div className="lg:col-span-12 xl:col-span-5 space-y-6">
+                      
+                      {/* Box 1: Customer Information / Pickup Panel */}
+                      <div className={`bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 shadow-sm sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                        !selfCustomerName.trim() 
+                          ? 'border-pink-500 ring-4 ring-pink-100 shadow-md sm:shadow-[8px_8px_0px_rgba(236,72,153,0.15)] bg-pink-50/5'
+                          : 'border-slate-800'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">👤</span>
+                            <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5 font-sans">٢. معلومات الاستلام</h3>
+                          </div>
+                          {!selfCustomerName.trim() && (
+                            <span className="bg-pink-100 text-pink-600 font-black text-[9px] px-2.5 py-1 rounded-full animate-pulse border border-pink-200">مطلوب الآن</span>
+                          )}
+                        </div>
+                        
+                        {/* Buyer/Customer Name */}
+                        <div className="flex flex-col gap-1.5 font-sans text-xs">
+                          <label className="text-[10px] text-slate-400 font-extrabold leading-relaxed" htmlFor="self-customer-name-inline">اسمك الكريم لتسمعه عند مناداة كوبك: *</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              id="self-customer-name-inline"
+                              placeholder="اكتب اسم العميل الكريم هنا..."
+                              value={selfCustomerName}
+                              onChange={(e) => setSelfCustomerName(e.target.value)}
+                              className={`w-full bg-white border-2 hover:border-pink-300 focus:border-pink-500 focus:outline-none rounded-2xl px-4 py-3 text-xs font-black text-slate-805 placeholder:text-slate-300 shadow-sm transition-all ${
+                                !selfCustomerName.trim()
+                                  ? 'border-pink-400 focus:ring-4 focus:ring-pink-100'
+                                  : 'border-slate-300'
+                              }`}
+                            />
+                            {!selfCustomerName.trim() && (
+                              <span className="absolute left-3.5 top-3.5 text-xs animate-ping">✍️</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Box 2: Customer Payment Options Panel */}
+                      <div className={`bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 shadow-sm sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                        selfCustomerName.trim() && (!custPaymentMethod || (custPaymentMethod === 'card' && !custBankSubMethod))
+                          ? 'border-amber-500 ring-4 ring-amber-100 bg-amber-50/5 shadow-md sm:shadow-[8px_8px_0px_rgba(245,158,11,0.15)]'
+                          : 'border-slate-800'
+                      }`}>
+                        <div className="flex items-center justify-between border-b border-dashed border-slate-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">💳</span>
+                            <h3 className="text-xs font-black text-pink-650 border-r-4 border-pink-500 pr-2 pb-0.5 font-sans">٣. السداد والدفع</h3>
+                          </div>
+                          {selfCustomerName.trim() && (!custPaymentMethod || (custPaymentMethod === 'card' && !custBankSubMethod)) && (
+                            <span className="bg-amber-100 text-amber-700 font-black text-[9px] px-2.5 py-1 rounded-full animate-pulse border border-amber-200">الخطوة الفعالة</span>
+                          )}
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-black text-slate-400 block mr-1">اختر طريقة السداد المفضلة لديك:</span>
+                              {selfCustomerName.trim() && (!custPaymentMethod) && (
+                                <span className="text-[9px] text-amber-600 font-black bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full animate-pulse">حدد الطريقة</span>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCustPaymentMethod('cash');
+                                  setCustBankSubMethod('');
+                                }}
+                                className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
+                                  custPaymentMethod === 'cash'
+                                    ? 'bg-pink-500 border-pink-600 text-white shadow-md'
+                                    : selfCustomerName.trim()
+                                    ? 'bg-amber-50/20 border-amber-300 text-slate-750 hover:border-pink-300'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
+                                }`}
+                              >
+                                <Coins className="w-4 h-4" />
+                                <span>نقدي / كاش</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCustPaymentMethod('card');
+                                  setCustBankSubMethod('');
+                                }}
+                                className={`py-3 px-4 rounded-xl font-black text-xs transition border-2 flex items-center justify-center gap-2 cursor-pointer ${
+                                  custPaymentMethod === 'card'
+                                    ? 'bg-pink-500 border-pink-700 text-white shadow-md'
+                                    : selfCustomerName.trim()
+                                    ? 'bg-amber-50/20 border-amber-300 text-slate-750 hover:border-pink-300'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-pink-300'
+                                }`}
+                              >
+                                <span>🏦</span>
+                                <span>تحويل بنكي</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Customer Bank Transfer Sub-options */}
+                          {custPaymentMethod === 'card' && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-3.5 space-y-2.5 font-sans overflow-hidden"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-slate-500 block mr-1">بوابة التحويل المفضلة:</span>
+                                {!custBankSubMethod && (
+                                  <span className="text-[8px] bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-black animate-pulse">مطلوب التحديد</span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { id: 'stc', name: 'STC Pay', icon: '📱' },
+                                  { id: 'barq', name: 'barq', icon: '⚡' },
+                                  { id: 'urpay', name: 'urpay', icon: '💳' },
+                                  { id: 'other', name: 'بنك آخر', icon: '🏦' }
+                                ].map(sub => {
+                                  const isSel = custBankSubMethod === sub.id;
+                                  return (
+                                    <button
+                                      key={sub.id}
+                                      type="button"
+                                      onClick={() => setCustBankSubMethod(sub.id)}
+                                      className={`py-2 px-3 text-[11px] font-black rounded-xl border-2 transition cursor-pointer flex items-center justify-between gap-1 ${
+                                        isSel
+                                          ? 'bg-pink-500 border-pink-600 text-white shadow-sm'
+                                          : 'bg-white border-slate-200 hover:border-pink-300 text-slate-700'
+                                      }`}
+                                    >
+                                      <span className="truncate">{sub.name}</span>
+                                      <span className="text-sm">{sub.icon}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Calculations breakdown block & Submit */}
+                      <div className={`bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-2 sm:border-4 shadow-sm sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-4 text-right transition-all duration-300 ${
+                        selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                          ? 'border-emerald-500 ring-4 ring-emerald-100 shadow-md sm:shadow-[8px_8px_0px_rgba(16,185,129,0.15)] bg-emerald-50/5'
+                          : 'border-slate-800'
+                      }`}>
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-xs font-black text-slate-800 border-r-4 border-slate-400 pr-2 pb-0.5 font-sans">٤. ملخص الحساب الكلي</h3>
+                          {selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) && (
+                            <span className="bg-emerald-100 text-emerald-600 font-black text-[9px] px-2.5 py-1 rounded-full border border-emerald-200">جاهز للإرسال 🚀</span>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-2.5 font-sans text-xs">
+                          <div className="flex justify-between text-slate-500 font-bold">
+                            <span>المجموع الفرعي للأكواب:</span>
+                            <span className="font-mono">{customerTotals.subtotal.toFixed(2)} ر.س</span>
+                          </div>
+                          {customerTotals.toppingsSubtotal > 0 && (
+                            <div className="flex justify-between text-slate-500 font-bold">
+                              <span>ملحقات الإضافات الفخمة:</span>
+                              <span className="font-mono">+{customerTotals.toppingsSubtotal.toFixed(2)} ر.س</span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between items-center text-sm font-black text-slate-850 pt-3 border-t-2 border-dashed border-slate-200">
+                            <span>قيمة الدفع الإجمالية:</span>
+                            <span className="text-lg font-mono text-pink-600">{customerTotals.finalTotal.toFixed(2)} ريال</span>
+                          </div>
+                        </div>
+
+                        {/* Submit order button */}
+                        <motion.button
+                          type="button"
+                          disabled={customerCart.length === 0}
+                          onClick={handleSubmitCustomerOrder}
+                          animate={selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) ? {
+                            scale: [1, 1.02, 1],
+                            boxShadow: [
+                              "0 4px 6px -1px rgba(16, 185, 129, 0.1)",
+                              "0 15px 25px -5px rgba(16, 185, 129, 0.3)",
+                              "0 4px 6px -1px rgba(16, 185, 129, 0.1)"
+                            ]
+                          } : {}}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 2,
+                            ease: "easeInOut"
+                          }}
+                          className={`w-full font-black py-4 rounded-2xl border-b-4 transition flex items-center justify-center gap-2 cursor-pointer text-xs leading-none uppercase ${
+                            customerCart.length === 0
+                              ? 'bg-slate-200 text-slate-450 border-slate-350 cursor-not-allowed'
+                              : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-700 hover:border-emerald-800'
+                              : 'bg-pink-500 hover:bg-pink-600 text-white border-pink-700 hover:border-pink-800'
+                          }`}
+                          style={{ 
+                            backgroundColor: customerCart.length === 0 
+                              ? '#cbd5e1' 
+                              : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                              ? '#10b981'
+                              : '#ec4899', 
+                            borderColor: customerCart.length === 0 
+                              ? '#94a3b8' 
+                              : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
+                              ? '#047857'
+                              : '#be185d' 
+                          }}
+                        >
+                          <span>🚀</span>
+                          <span>إرسال وتحضير الطلب سحابياً</span>
+                        </motion.button>
+                      </div>
+
+                    </div>
+
+                  </div>
+                )}
               </div>
 
             </div>
@@ -2595,129 +2879,7 @@ export default function App() {
           </div>
         </footer>
 
-        {/* --- CUSTOM ADD TO CART CONFIRMATION MODAL --- */}
-        <AnimatePresence>
-          {showCustAddConfirmModal && lastAddedCustItem && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              {/* Blur backdrop overlay */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setShowCustAddConfirmModal(false)}
-                className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
-              />
 
-              {/* Modal Card Content */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 30 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                transition={{ type: "spring", damping: 25, stiffness: 350 }}
-                className="relative bg-white w-full max-w-md rounded-3xl sm:rounded-[2.5rem] border-2 sm:border-4 border-slate-800 shadow-lg sm:shadow-[8px_8px_0px_rgba(30,41,59,0.15)] overflow-y-auto max-h-[95vh] p-4 sm:p-6 text-center space-y-4 sm:space-y-5 font-sans z-10"
-              >
-                {/* Celebratory top section */}
-                <div className="relative pt-4">
-                  <div className="mx-auto w-16 h-16 bg-emerald-100 border-2 border-emerald-500 rounded-full flex items-center justify-center text-3xl shadow-sm animate-bounce">
-                    ✨
-                  </div>
-                  <motion.div
-                    className="absolute inset-0 flex justify-center items-center pointer-events-none"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: [1, 1.3, 1], opacity: [0, 1, 0] }}
-                    transition={{ duration: 1, repeat: Infinity }}
-                  >
-                    <div className="w-24 h-24 rounded-full border-4 border-pink-400 opacity-30" />
-                  </motion.div>
-                </div>
-
-                <div className="space-y-2 text-center">
-                  <h3 className="text-xl font-black text-emerald-600">تم حفظ الآيس كريم بنجاح! 🎉</h3>
-                  <p className="text-xs font-bold text-slate-500">تم تصميم مزيجك الفريد وإضافته إلى سلة التسوق الذاتية بنجاح.</p>
-                </div>
-
-                {/* customized item specifications card */}
-                <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 text-right space-y-2">
-                  <span className="text-[10px] font-extrabold text-slate-400 block border-b border-slate-200 pb-1.5 mb-1.5 uppercase tracking-wide">تفاصيل كوب آيس كريم أحلامك:</span>
-                  
-                  {/* Container Details */}
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-slate-500">نوع وعاء التقديم:</span>
-                    <span className="font-extrabold text-slate-800 flex items-center gap-1">
-                      <span>{lastAddedCustItem.container.emoji || '🍨'}</span>
-                      <span>{lastAddedCustItem.container.name}</span>
-                    </span>
-                  </div>
-
-                  {/* Flavors Details */}
-                  <div className="flex justify-between items-start text-xs gap-4">
-                    <span className="font-bold text-slate-500 shrink-0">النكهات المختارة:</span>
-                    <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
-                      {lastAddedCustItem.flavors.map((flavor, index) => (
-                        <span key={index} className="bg-pink-100/60 border border-pink-200 rounded-lg px-1.5 py-0.5 font-extrabold text-[10px] text-pink-700 flex items-center gap-0.5">
-                          <span>{flavor.emoji || '🍦'}</span>
-                          <span>{flavor.name}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Toppings Details */}
-                  <div className="flex justify-between items-start text-xs gap-4">
-                    <span className="font-bold text-slate-500 shrink-0">إضافات الزينة:</span>
-                    <div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
-                      {lastAddedCustItem.toppings.length === 0 ? (
-                        <span className="text-[10px] font-bold text-slate-400">- بدون إضافات -</span>
-                      ) : (
-                        lastAddedCustItem.toppings.map((topping, index) => (
-                          <span key={index} className="bg-amber-100/60 border border-amber-200 rounded-lg px-1.5 py-0.5 font-extrabold text-[10px] text-amber-800 flex items-center gap-0.5">
-                            <span>{topping.emoji || '🍓'}</span>
-                            <span>{topping.name}</span>
-                          </span>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Quantity and totals */}
-                  <div className="border-t border-dashed border-slate-200 pt-2 mt-2 flex justify-between items-center">
-                    <div className="text-xs">
-                      <span className="font-bold text-slate-500">الكمية:</span>{' '}
-                      <span className="font-black text-pink-600">{lastAddedCustItem.quantity} أكواب</span>
-                    </div>
-                    <div className="text-xs">
-                      <span className="font-bold text-slate-500">القيمة الإجمالية:</span>{' '}
-                      <span className="font-black text-slate-800 bg-white border border-slate-200 rounded-lg px-2 py-0.5">{(lastAddedCustItem.itemTotal).toFixed(2)} ر.س</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer buttons */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCustAddConfirmModal(false);
-                    }}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-800 font-extrabold text-xs py-3 px-4 rounded-xl transition cursor-pointer border border-slate-200"
-                  >
-                    إضافة طلب آخر 🍨
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCustAddConfirmModal(false);
-                      setIsCartOpen(true);
-                    }}
-                    className="bg-pink-500 hover:bg-pink-600 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.2)] transition cursor-pointer border border-pink-600"
-                  >
-                    عرض السلة والدفع 🛒
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
       </div>
     );

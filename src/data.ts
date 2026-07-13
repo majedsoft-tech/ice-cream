@@ -77,30 +77,6 @@ export const DISCOUNTS: OrderDiscount[] = [
     type: 'fixed',
     value: 0,
     description: 'لا يوجد خصم يدوي مطبق'
-  },
-  {
-    id: 'loyal_customer',
-    name: 'خصم العميل الوفي %10',
-    nameEn: 'Loyal Customer 10%',
-    type: 'percentage',
-    value: 10,
-    description: 'خصم تقديري للزبائن الدائمين للمحل.'
-  },
-  {
-    id: 'family_offer',
-    name: 'خصم الجمعات والعائلات %15',
-    nameEn: 'Family Discount 15%',
-    type: 'percentage',
-    value: 15,
-    description: 'يُطبق للطلبات العائلية الكبيرة لإضفاء البهجة.'
-  },
-  {
-    id: 'happy_child',
-    name: 'خصم ابتسامة طفل (3 ريال)',
-    nameEn: 'Child Smile Deal (3 SAR)',
-    type: 'fixed',
-    value: 3,
-    description: 'خصم نقدي مباشر لإسعاد الصغار.'
   }
 ];
 
