@@ -484,6 +484,7 @@ export default function App() {
     return localStorage.getItem('recent_online_order_id') || null;
   });
   const [activeCustomerOrder, setActiveCustomerOrder] = useState<OnlineOrder | null>(null);
+  const [isSubmittingCustomerOrder, setIsSubmittingCustomerOrder] = useState<boolean>(false);
 
   const [custPaymentMethod, setCustPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [custBankSubMethod, setCustBankSubMethod] = useState<string>('stc');
@@ -509,28 +510,29 @@ export default function App() {
     setPrevCustomerOrderStatus(activeCustomerOrder?.status || null);
   }, [activeCustomerOrder?.status, prevCustomerOrderStatus]);
 
-  // Countdown timer effect for auto-received transition
+  // Countdown timer effect for auto-received transition (7 seconds)
   useEffect(() => {
-    if (recentOnlineOrderId && activeCustomerOrder && activeCustomerOrder.status === 'prepared') {
-      if (preparedCountdown === null) {
-        setPreparedCountdown(10);
-      }
-    } else {
+    if (!recentOnlineOrderId || !activeCustomerOrder || activeCustomerOrder.status !== 'prepared') {
       setPreparedCountdown(null);
-    }
-  }, [recentOnlineOrderId, activeCustomerOrder?.status]);
-
-  useEffect(() => {
-    if (preparedCountdown === null) return;
-    if (preparedCountdown <= 0) {
-      handleMarkOrderAsReceived();
       return;
     }
-    const interval = setInterval(() => {
-      setPreparedCountdown(prev => (prev !== null ? prev - 1 : null));
-    }, 1000);
+
+    const preparedAtVal = activeCustomerOrder.preparedAt || Date.now();
+
+    const updateCountdown = () => {
+      const elapsed = Math.floor((Date.now() - preparedAtVal) / 1000);
+      const remaining = Math.max(0, 7 - elapsed);
+      setPreparedCountdown(remaining);
+
+      if (remaining <= 0) {
+        handleMarkOrderAsReceived();
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [preparedCountdown]);
+  }, [recentOnlineOrderId, activeCustomerOrder?.status, activeCustomerOrder?.preparedAt]);
 
   // Dynamic customer customization options
   const [custContainer, setCustContainer] = useState<ContainerOption | null>(null);
@@ -582,7 +584,21 @@ export default function App() {
     if (recentOnlineOrderId) {
       const unsub = onSnapshot(doc(db, 'online_orders', recentOnlineOrderId), (snap) => {
         if (snap.exists()) {
-          setActiveCustomerOrder(snap.data() as OnlineOrder);
+          const data = snap.data() as OnlineOrder;
+          if (data.status === 'received') {
+            setMyPastOrders(prev => {
+              const updated = [data, ...prev.filter(o => o.id !== data.id)];
+              localStorage.setItem('my_past_orders_list', JSON.stringify(updated));
+              return updated;
+            });
+            localStorage.removeItem('recent_online_order_id');
+            setRecentOnlineOrderId(null);
+            setActiveCustomerOrder(null);
+            setSelfCustomerName('');
+            triggerNotice('🎉 تم استلام طلبك بنجاح وعافية على قلبك! نتمنى لك يوماً سعيداً وننتظرك مجدداً.', 'success');
+          } else {
+            setActiveCustomerOrder(data);
+          }
         } else {
           setActiveCustomerOrder(null);
         }
@@ -595,6 +611,31 @@ export default function App() {
 
   // --- ONLINE ORDERS MAIN POS STATE ---
   const [onlineOrders, setOnlineOrders] = useState<OnlineOrder[]>([]);
+
+  // Admin-side and offline recovery auto-receive monitor (7 seconds)
+  useEffect(() => {
+    if (onlineOrders.length === 0) return;
+
+    const checkAndAutoReceive = async () => {
+      const now = Date.now();
+      for (const order of onlineOrders) {
+        if (order.status === 'prepared' && order.preparedAt) {
+          const elapsed = Math.floor((now - order.preparedAt) / 1000);
+          if (elapsed >= 7) {
+            try {
+              await setDoc(doc(db, 'online_orders', order.id), { status: 'received' }, { merge: true });
+            } catch (err) {
+              console.error("Error auto-receiving order in background scanner:", err);
+            }
+          }
+        }
+      }
+    };
+
+    checkAndAutoReceive();
+    const interval = setInterval(checkAndAutoReceive, 1000);
+    return () => clearInterval(interval);
+  }, [onlineOrders]);
   const [onlineViewLayout, setOnlineViewLayout] = useState<'grid' | 'list'>('list');
   const [previousPendingCount, setPreviousPendingCount] = useState<number>(0);
   
@@ -1301,7 +1342,7 @@ export default function App() {
   const handlePrepareOnlineOrder = async (order: OnlineOrder) => {
     try {
       // 1. Mark status as 'prepared'
-      await setDoc(doc(db, 'online_orders', order.id), { status: 'prepared' }, { merge: true });
+      await setDoc(doc(db, 'online_orders', order.id), { status: 'prepared', preparedAt: Date.now() }, { merge: true });
 
       // 2. Automatically register it to the completed sales history so statistics updates live!
       const saleId = `${Date.now()}`;
@@ -1487,6 +1528,7 @@ export default function App() {
   };
 
   const handleSubmitCustomerOrder = async () => {
+    if (isSubmittingCustomerOrder) return;
     if (selfCustomerName.trim().length < 2) {
       triggerNotice('الرجاء إدخال اسمك الكريم (حرفين على الأقل) لن نتمكن من تجهيز طلبك بدونه! 🌸', 'error');
       return;
@@ -1495,6 +1537,8 @@ export default function App() {
       triggerNotice('سلة طلبك فارغة! يرجى تكوين آيس كريم وإضافته أولاً.', 'error');
       return;
     }
+
+    setIsSubmittingCustomerOrder(true);
 
     const orderId = `ONLINE-${Date.now()}`;
     const orderNum = `ON-${Date.now().toString().slice(-4)}`;
@@ -1538,6 +1582,8 @@ export default function App() {
       } catch (err) {
         // Log formatted JSON
       }
+    } finally {
+      setIsSubmittingCustomerOrder(false);
     }
   };
 
@@ -1557,21 +1603,10 @@ export default function App() {
   };
 
   async function handleMarkOrderAsReceived() {
-    if (recentOnlineOrderId) {
-      try {
-        await setDoc(doc(db, 'online_orders', recentOnlineOrderId), { status: 'received' }, { merge: true });
-      } catch (e) {
-        console.error("Error setting order received status dynamically:", e);
-      }
-    }
-    if (activeCustomerOrder) {
-      const receivedOrder = { ...activeCustomerOrder, status: 'received' as const };
-      setMyPastOrders(prev => {
-        const updated = [receivedOrder, ...prev.filter(o => o.id !== activeCustomerOrder.id)];
-        localStorage.setItem('my_past_orders_list', JSON.stringify(updated));
-        return updated;
-      });
-    }
+    const orderIdToClear = recentOnlineOrderId;
+    const orderToClear = activeCustomerOrder;
+
+    // Clear local state instantly for lightning-fast UI response
     localStorage.removeItem('recent_online_order_id');
     setRecentOnlineOrderId(null);
     setActiveCustomerOrder(null);
@@ -1581,6 +1616,23 @@ export default function App() {
     setShowPastOrders(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     triggerNotice('تم استلام طلبك ومسحه وإضافته لسجل طلباتك المستلمة بنجاح! شكراً لك 🍦', 'success');
+
+    if (orderToClear) {
+      const receivedOrder = { ...orderToClear, status: 'received' as const };
+      setMyPastOrders(prev => {
+        const updated = [receivedOrder, ...prev.filter(o => o.id !== orderToClear.id)];
+        localStorage.setItem('my_past_orders_list', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    if (orderIdToClear) {
+      try {
+        await setDoc(doc(db, 'online_orders', orderIdToClear), { status: 'received' }, { merge: true });
+      } catch (e) {
+        console.error("Error setting order received status dynamically:", e);
+      }
+    }
   }
 
   function handleDeletePastOrder(orderId: string) {
@@ -1950,14 +2002,14 @@ export default function App() {
                       <div className="bg-blue-50 text-blue-800 p-4 rounded-2xl border-2 border-blue-200 inline-flex flex-col items-center justify-center gap-2 font-sans mt-3 text-center mx-auto max-w-sm">
                         <span className="text-xs font-black flex items-center justify-center gap-1.5 flex-wrap">
                           <span className="animate-spin text-sm">⏳</span>
-                          <span>التحول التلقائي لطلباتك السابقة تم خلال:</span>
+                          <span>سيتم تأكيد استلام الطلب تلقائياً خلال:</span>
                           <span className="font-mono text-xs text-pink-600 font-extrabold px-2 py-0.5 bg-white rounded border border-blue-300 min-w-[2.5rem] inline-block">{preparedCountdown}ث</span>
                         </span>
                         {/* Beautiful progress indicator bar */}
                         <div className="w-48 bg-blue-200 h-1.5 rounded-full overflow-hidden mt-1">
                           <motion.div 
                             initial={{ width: '100%' }}
-                            animate={{ width: `${(preparedCountdown / 10) * 100}%` }}
+                            animate={{ width: `${(preparedCountdown / 7) * 100}%` }}
                             transition={{ duration: 1, ease: 'linear' }}
                             className="bg-blue-600 h-full"
                           />
@@ -2360,9 +2412,9 @@ export default function App() {
                     {/* Submit order button */}
                     <motion.button
                       type="button"
-                      disabled={customerCart.length === 0}
+                      disabled={customerCart.length === 0 || isSubmittingCustomerOrder}
                       onClick={handleSubmitCustomerOrder}
-                      animate={selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) ? {
+                      animate={!isSubmittingCustomerOrder && selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) ? {
                         scale: [1, 1.02, 1],
                         boxShadow: [
                           "0 4px 6px -1px rgba(16, 185, 129, 0.1)",
@@ -2378,6 +2430,8 @@ export default function App() {
                       className={`w-full font-black py-4 rounded-2xl border-b-4 transition flex items-center justify-center gap-2 cursor-pointer text-xs leading-none uppercase ${
                         customerCart.length === 0
                           ? 'bg-slate-200 text-slate-450 border-slate-350 cursor-not-allowed'
+                          : isSubmittingCustomerOrder
+                          ? 'bg-emerald-400 text-white border-emerald-600 cursor-wait'
                           : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
                           ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-700 hover:border-emerald-800'
                           : 'bg-pink-500 hover:bg-pink-600 text-white border-pink-700 hover:border-pink-800'
@@ -2385,18 +2439,29 @@ export default function App() {
                       style={{ 
                         backgroundColor: customerCart.length === 0 
                           ? '#cbd5e1' 
+                          : isSubmittingCustomerOrder
+                          ? '#34d399'
                           : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
                           ? '#10b981'
                           : '#ec4899', 
                         borderColor: customerCart.length === 0 
                           ? '#94a3b8' 
+                          : isSubmittingCustomerOrder
+                          ? '#059669'
                           : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
                           ? '#047857'
                           : '#be185d' 
                       }}
                     >
-                      <span>🚀</span>
-                      <span>إرسال وتحضير الطلب سحابياً</span>
+                      {isSubmittingCustomerOrder ? (
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <span>🚀</span>
+                      )}
+                      <span>{isSubmittingCustomerOrder ? 'جاري إرسال وتحضير الطلب...' : 'إرسال وتحضير الطلب سحابياً'}</span>
                     </motion.button>
 
                     <button
@@ -2832,9 +2897,9 @@ export default function App() {
                         {/* Submit order button */}
                         <motion.button
                           type="button"
-                          disabled={customerCart.length === 0}
+                          disabled={customerCart.length === 0 || isSubmittingCustomerOrder}
                           onClick={handleSubmitCustomerOrder}
-                          animate={selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) ? {
+                          animate={!isSubmittingCustomerOrder && selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod)) ? {
                             scale: [1, 1.02, 1],
                             boxShadow: [
                               "0 4px 6px -1px rgba(16, 185, 129, 0.1)",
@@ -2850,6 +2915,8 @@ export default function App() {
                           className={`w-full font-black py-4 rounded-2xl border-b-4 transition flex items-center justify-center gap-2 cursor-pointer text-xs leading-none uppercase ${
                             customerCart.length === 0
                               ? 'bg-slate-200 text-slate-450 border-slate-350 cursor-not-allowed'
+                              : isSubmittingCustomerOrder
+                              ? 'bg-emerald-400 text-white border-emerald-600 cursor-wait'
                               : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
                               ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-700 hover:border-emerald-800'
                               : 'bg-pink-500 hover:bg-pink-600 text-white border-pink-700 hover:border-pink-800'
@@ -2857,18 +2924,29 @@ export default function App() {
                           style={{ 
                             backgroundColor: customerCart.length === 0 
                               ? '#cbd5e1' 
+                              : isSubmittingCustomerOrder
+                              ? '#34d399'
                               : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
                               ? '#10b981'
                               : '#ec4899', 
                             borderColor: customerCart.length === 0 
                               ? '#94a3b8' 
+                              : isSubmittingCustomerOrder
+                              ? '#059669'
                               : selfCustomerName.trim() && (custPaymentMethod === 'cash' || (custPaymentMethod === 'card' && custBankSubMethod))
                               ? '#047857'
                               : '#be185d' 
                           }}
                         >
-                          <span>🚀</span>
-                          <span>إرسال وتحضير الطلب سحابياً</span>
+                          {isSubmittingCustomerOrder ? (
+                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <span>🚀</span>
+                          )}
+                          <span>{isSubmittingCustomerOrder ? 'جاري إرسال وتحضير الطلب...' : 'إرسال وتحضير الطلب سحابياً'}</span>
                         </motion.button>
                       </div>
 

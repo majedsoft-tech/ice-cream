@@ -83,9 +83,10 @@ export interface OnlineOrder {
   subtotal: number;
   toppingsTotal: number;
   total: number;
-  status: 'pending' | 'accepted' | 'prepared' | 'cancelled';
+  status: 'pending' | 'accepted' | 'prepared' | 'cancelled' | 'received';
   timestamp: string;
   createdAt?: number;
+  preparedAt?: number;
   paymentMethod?: 'cash' | 'card';
   bankSubMethod?: string;
 }
