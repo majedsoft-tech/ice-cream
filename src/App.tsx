@@ -603,6 +603,7 @@ export default function App() {
   const [completedOrder, setCompletedOrder] = useState<SaleRecord | null>(null);
   const [refundingSaleId, setRefundingSaleId] = useState<string | null>(null);
   const [refundingOrderNo, setRefundingOrderNo] = useState<string | null>(null);
+  const [showClearProcessedOrdersConfirm, setShowClearProcessedOrdersConfirm] = useState<boolean>(false);
 
   // Expenses State
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
@@ -1355,24 +1356,33 @@ export default function App() {
     }
   };
 
-  const handleClearProcessedOnlineOrders = async () => {
+  const handleClearProcessedOnlineOrders = () => {
     const processedOrders = onlineOrders.filter(o => o.status === 'prepared' || o.status === 'cancelled' || o.status === 'received');
     if (processedOrders.length === 0) {
       triggerNotice('لا توجد طلبات مكتملة أو مستلمة أو ملغاة لحذفها حالياً.', 'info');
       return;
     }
-    if (window.confirm(`هل تريد حذف جميع الطلبات المكتملة أو المستلمة أو الملغاة عدد (${processedOrders.length}) نهائياً؟`)) {
-      try {
-        const batch = writeBatch(db);
-        processedOrders.forEach(o => {
-          batch.delete(doc(db, 'online_orders', o.id));
-        });
-        await batch.commit();
-        triggerNotice('تم تنظيف قائمة طلبات الأونلاين وحذف الطلبات المنتهية والمستلمة بنجاح! 🧹✨', 'success');
-      } catch (e) {
-        console.error(e);
-        triggerNotice('عذراً، حدث خطأ أثناء تنظيف طلبات الأونلاين.', 'error');
-      }
+    setShowClearProcessedOrdersConfirm(true);
+  };
+
+  const executeClearProcessedOnlineOrders = async () => {
+    const processedOrders = onlineOrders.filter(o => o.status === 'prepared' || o.status === 'cancelled' || o.status === 'received');
+    if (processedOrders.length === 0) {
+      setShowClearProcessedOrdersConfirm(false);
+      return;
+    }
+    try {
+      const batch = writeBatch(db);
+      processedOrders.forEach(o => {
+        batch.delete(doc(db, 'online_orders', o.id));
+      });
+      await batch.commit();
+      triggerNotice('تم تنظيف قائمة طلبات الأونلاين وحذف الطلبات المنتهية والمستلمة بنجاح! 🧹✨', 'success');
+    } catch (e) {
+      console.error(e);
+      triggerNotice('عذراً، حدث خطأ أثناء تنظيف طلبات الأونلاين.', 'error');
+    } finally {
+      setShowClearProcessedOrdersConfirm(false);
     }
   };
 
@@ -6091,6 +6101,50 @@ export default function App() {
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-black text-xs py-3 rounded-xl transition cursor-pointer active:scale-95"
                 >
                   تراجع وإلغاء ❌
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- CUSTOM CLEAR PROCESSED ORDERS CONFIRMATION DIALOG --- */}
+      <AnimatePresence>
+        {showClearProcessedOrdersConfirm && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border-4 border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative"
+              dir="rtl"
+            >
+              <div className="w-16 h-16 bg-pink-100 border-2 border-pink-500 rounded-full flex items-center justify-center text-3xl mx-auto animate-bounce">
+                🧹
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-800">تأكيد تنظيف قائمة الطلبات</h3>
+                <p className="text-xs text-slate-600 font-extrabold mt-1">
+                  هل تريد بالتأكيد حذف جميع الطلبات السحابية المكتملة أو المستلمة أو الملغاة؟
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold mt-2 leading-relaxed">
+                  سيتم حذف الطلبات المنتهية فقط من القائمة السحابية لتنظيف الشاشة، مع بقاء مبيعاتها المسجلة آمنة في سجل المبيعات.
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={executeClearProcessedOnlineOrders}
+                  className="flex-1 bg-pink-500 hover:bg-pink-600 text-white font-black text-xs py-3 rounded-xl transition cursor-pointer shadow-md active:scale-95"
+                >
+                  نعم، احذف المنتهية 🧹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowClearProcessedOrdersConfirm(false)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-black text-xs py-3 rounded-xl transition cursor-pointer active:scale-95"
+                >
+                  إلغاء ❌
                 </button>
               </div>
             </motion.div>
