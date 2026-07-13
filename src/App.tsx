@@ -601,6 +601,8 @@ export default function App() {
   // Sales Ledger State
   const [salesHistory, setSalesHistory] = useState<SaleRecord[]>([]);
   const [completedOrder, setCompletedOrder] = useState<SaleRecord | null>(null);
+  const [refundingSaleId, setRefundingSaleId] = useState<string | null>(null);
+  const [refundingOrderNo, setRefundingOrderNo] = useState<string | null>(null);
 
   // Expenses State
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
@@ -751,7 +753,7 @@ export default function App() {
   }, [expenses, profitsCategoryFilter, profitsSearchQuery, profitsDateRange, profitsStartDate, profitsEndDate]);
 
   const profitStats = useMemo(() => {
-    const totalRev = filteredProfitsSales.reduce((sum, s) => sum + s.total, 0);
+    const totalRev = filteredProfitsSales.reduce((sum, s) => sum + (s.subtotal !== undefined ? s.subtotal : s.total), 0);
     const totalExp = filteredProfitsExpenses.reduce((sum, e) => sum + e.amount, 0);
     const netProfit = totalRev - totalExp;
     const profitMargin = totalRev > 0 ? (netProfit / totalRev) * 100 : 0;
@@ -917,7 +919,11 @@ export default function App() {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
       const historyList: SaleRecord[] = [];
       snapshot.forEach((docSnap) => {
-        historyList.push(docSnap.data() as SaleRecord);
+        const data = docSnap.data() as SaleRecord;
+        historyList.push({
+          ...data,
+          id: data.id || docSnap.id
+        });
       });
       // Sort sales by timestamp descending to match the local behavior
       historyList.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -932,7 +938,11 @@ export default function App() {
     const unsubOnlineOrders = onSnapshot(collection(db, 'online_orders'), (snapshot) => {
       const ordersList: OnlineOrder[] = [];
       snapshot.forEach((docSnap) => {
-        ordersList.push(docSnap.data() as OnlineOrder);
+        const data = docSnap.data() as OnlineOrder;
+        ordersList.push({
+          ...data,
+          id: data.id || docSnap.id
+        });
       });
       // Sort: Newest timestamp first (newest order first)
       ordersList.sort((a, b) => {
@@ -950,7 +960,11 @@ export default function App() {
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
       const expensesList: ExpenseRecord[] = [];
       snapshot.forEach((docSnap) => {
-        expensesList.push(docSnap.data() as ExpenseRecord);
+        const data = docSnap.data() as ExpenseRecord;
+        expensesList.push({
+          ...data,
+          id: data.id || docSnap.id
+        });
       });
       // Sort by date descending and then by createdAt descending
       expensesList.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -1170,10 +1184,10 @@ export default function App() {
     const autoDiscountAmount = 0;
 
     // Manual Selected Discount
-    const manualDiscountAmount = Math.min(manualDiscountVal, subtotal - autoDiscountAmount);
+    const manualDiscountAmount = 0;
 
-    const totalDiscounts = autoDiscountAmount + manualDiscountAmount;
-    const finalTotal = Math.max(0, subtotal - totalDiscounts);
+    const totalDiscounts = 0;
+    const finalTotal = subtotal;
 
     return {
       productsSubtotal,
@@ -1297,9 +1311,9 @@ export default function App() {
         items: order.items,
         subtotal: order.subtotal,
         toppingsTotal: order.toppingsTotal,
-        discountAmount: (order.subtotal + order.toppingsTotal) - order.total,
+        discountAmount: 0,
         calculatedDiscountName: 'طلب خدمة ذاتية (أونلاين)',
-        total: order.total,
+        total: order.subtotal + order.toppingsTotal,
         paymentMethod: order.paymentMethod || 'cash',
         bankSubMethod: order.paymentMethod === 'card' ? (order.bankSubMethod || 'stc') : undefined,
         receivedAmount: order.total,
@@ -1588,13 +1602,14 @@ export default function App() {
     let posOrdersCount = 0;
 
     salesHistory.forEach(sale => {
-      totalRevenue += sale.total;
-      totalDiscountsGiven += sale.discountAmount;
+      const saleSubtotal = sale.subtotal !== undefined ? sale.subtotal : sale.total;
+      totalRevenue += saleSubtotal;
+      totalDiscountsGiven += 0;
 
       const isSaleOnline = sale.isOnline || sale.calculatedDiscountName?.includes('أونلاين');
       if (isSaleOnline) {
         onlineOrdersCount += 1;
-        onlineRevenue += sale.total;
+        onlineRevenue += saleSubtotal;
       } else {
         posOrdersCount += 1;
       }
@@ -1639,17 +1654,9 @@ export default function App() {
     }
   };
 
-  const handleRefundSale = async (saleId: string, orderNo: string) => {
-    if (window.confirm(`هل تريد إرجاع الطلب رقم ${orderNo} وإلغاء مبيعاته التاريخية؟`)) {
-      try {
-        await deleteDoc(doc(db, 'sales', saleId));
-        triggerNotice(`تم استرجاع الطلب ${orderNo} بنجاح وحذفه من السحابة.`, 'info');
-      } catch (err) {
-        console.error("Error refunding sale:", err);
-        triggerNotice('حدث خطأ أثناء إلغاء المبيعة بالسحابة.', 'error');
-        handleFirestoreError(err, OperationType.DELETE, `sales/${saleId}`);
-      }
-    }
+  const handleRefundSale = (saleId: string, orderNo: string) => {
+    setRefundingSaleId(saleId);
+    setRefundingOrderNo(orderNo);
   };
 
   if (viewMode === 'customer') {
@@ -3573,46 +3580,6 @@ export default function App() {
 
 
 
-                      {/* COOP MANUAL EXTRA DISCOUNT ROW */}
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mr-1 leading-relaxed">
-                          الخصومات الإضافية (خصم يدوي):
-                        </label>
-                        <div className="flex items-center gap-2 font-sans">
-                          <button
-                            type="button"
-                            onClick={() => setManualDiscountVal(v => Math.max(0, v - 1))}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 cursor-pointer border border-slate-200"
-                            title="ناقص 1 ريال"
-                          >
-                            -
-                          </button>
-                          <div className="flex items-center bg-white border-2 border-slate-300 rounded-xl overflow-hidden shadow-inner flex-1">
-                            <input
-                              type="number"
-                              step="0.5"
-                              min="0"
-                              placeholder="0.00"
-                              value={manualDiscountVal === 0 ? '' : manualDiscountVal}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                setManualDiscountVal(isNaN(val) ? 0 : Math.max(0, val));
-                              }}
-                              className="w-full text-center text-xs font-black font-mono text-slate-800 focus:outline-none py-1.5"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setManualDiscountVal(v => v + 1)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 cursor-pointer border border-slate-200"
-                            title="زائد 1 ريال"
-                          >
-                            +
-                          </button>
-                          <span className="text-xs font-bold text-slate-400">ر.س</span>
-                        </div>
-                      </div>
-
                       {/* PRICES BREAKDOWN AND BILL */}
                       <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-2 text-xs font-sans">
                         <div className="flex justify-between text-slate-600">
@@ -4429,9 +4396,9 @@ export default function App() {
                               ))}
                             </div>
                           </td>
-                          <td className="py-4 font-black text-emerald-605">{sale.calculatedDiscountName}</td>
+                          <td className="py-4 font-black text-slate-400">بدون خصم</td>
                           <td className="py-4 font-mono font-black text-slate-850 text-sm">
-                            {sale.total.toFixed(2)} ريال{' '}
+                            {(sale.subtotal !== undefined ? sale.subtotal : sale.total).toFixed(2)} ريال{' '}
                             {sale.paymentMethod === 'card' ? (
                               <span
                                 className="inline-flex items-center gap-1 text-[9px] font-black text-slate-600 bg-slate-100 border border-slate-200 py-0.5 px-1.5 rounded-md"
@@ -6001,21 +5968,9 @@ export default function App() {
                       <span>+{completedOrder.toppingsTotal.toFixed(2)} ريال</span>
                     </div>
                   )}
-                  {completedOrder.discountAmount > 0 && (
-                    <div className="flex justify-between text-emerald-600 font-black">
-                      <span>قيمة التخفيضات المقتطعة:</span>
-                      <span>-{completedOrder.discountAmount.toFixed(2)} ريال</span>
-                    </div>
-                  )}
-                  
-                  {/* Applied details */}
-                  <p className="text-[9px] text-emerald-700 py-1 px-1.5 bg-emerald-50 rounded font-bold border border-emerald-100">
-                    العروض والخصومات: {completedOrder.calculatedDiscountName}
-                  </p>
-
                   <div className="flex justify-between text-xs text-slate-900 font-black pt-2 border-t border-slate-200 text-sm">
                     <span>الحساب الإجمالي المقبوض:</span>
-                    <span className="text-pink-650 font-black">{completedOrder.total.toFixed(2)} ريال</span>
+                    <span className="text-pink-650 font-black">{(completedOrder.subtotal + completedOrder.toppingsTotal).toFixed(2)} ريال</span>
                   </div>
 
                   <div className="flex justify-between text-[10px] text-slate-500 pt-1 font-bold">
@@ -6078,6 +6033,66 @@ export default function App() {
                 ))}
               </div>
 
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- CUSTOM REFUND CONFIRMATION DIALOG --- */}
+      <AnimatePresence>
+        {refundingSaleId && refundingOrderNo && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border-4 border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative"
+              dir="rtl"
+            >
+              <div className="w-16 h-16 bg-red-100 border-2 border-red-500 rounded-full flex items-center justify-center text-3xl mx-auto animate-pulse">
+                🔄
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-800">تأكيد إرجاع الطلب</h3>
+                <p className="text-xs text-red-600 font-extrabold mt-1">
+                  هل أنت متأكد من رغبتك في إرجاع الطلب رقم <span className="font-mono text-pink-600 font-black underline">{refundingOrderNo}</span>؟
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold mt-2 leading-relaxed">
+                  سيتم إلغاء المبيعة وحذفها نهائياً من سجل المبيعات والتقارير سحابياً. لا يمكن التراجع عن هذا الإجراء!
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (refundingSaleId) {
+                      try {
+                        await deleteDoc(doc(db, 'sales', refundingSaleId));
+                        triggerNotice(`تم استرجاع الطلب ${refundingOrderNo} بنجاح وحذفه من السحابة.`, 'info');
+                      } catch (err) {
+                        console.error("Error refunding sale:", err);
+                        triggerNotice('حدث خطأ أثناء إلغاء المبيعة بالسحابة.', 'error');
+                        handleFirestoreError(err, OperationType.DELETE, `sales/${refundingSaleId}`);
+                      }
+                    }
+                    setRefundingSaleId(null);
+                    setRefundingOrderNo(null);
+                  }}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white font-black text-xs py-3 rounded-xl transition cursor-pointer shadow-md active:scale-95"
+                >
+                  نعم، إرجاع 🗑️
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefundingSaleId(null);
+                    setRefundingOrderNo(null);
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-black text-xs py-3 rounded-xl transition cursor-pointer active:scale-95"
+                >
+                  تراجع وإلغاء ❌
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
