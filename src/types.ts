@@ -73,6 +73,7 @@ export interface SaleRecord {
   bankSubMethod?: string;
   customerName?: string;
   isOnline?: boolean;
+  createdAt?: number;
 }
 
 export interface OnlineOrder {

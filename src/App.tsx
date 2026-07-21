@@ -37,6 +37,69 @@ const cleanForFirestore = <T,>(obj: T): T => {
   return JSON.parse(JSON.stringify(obj));
 };
 
+const getFormattedDateTime = (order: OnlineOrder): string => {
+  if (order.timestamp && order.timestamp.trim() !== '') {
+    // Check if the timestamp is missing date part (e.g., doesn't contain "/" or "٢٠٢")
+    if (!order.timestamp.includes('/') && !order.timestamp.includes('-') && !order.timestamp.includes('٢٠٢')) {
+      const datePart = order.createdAt 
+        ? new Date(order.createdAt).toLocaleDateString('ar-SA')
+        : new Date().toLocaleDateString('ar-SA');
+      return `${datePart}، ${order.timestamp}`;
+    }
+    return order.timestamp;
+  }
+  if (order.createdAt) {
+    return new Date(order.createdAt).toLocaleString('ar-SA', { hour12: true });
+  }
+  // Fallback from order.id e.g. ONLINE-1712345678901
+  if (order.id && order.id.includes('-')) {
+    const parts = order.id.split('-');
+    const ts = parseInt(parts[parts.length - 1]);
+    if (!isNaN(ts) && ts > 1000000000000) {
+      return new Date(ts).toLocaleString('ar-SA', { hour12: true });
+    }
+  }
+  return new Date().toLocaleString('ar-SA', { hour12: true });
+};
+
+const getLocalYYYYMMDD = (dateOrTs: Date | number): string => {
+  const d = new Date(dateOrTs);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const convertArabicNumerals = (str: string): string => {
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  return str.replace(/[٠-٩]/g, (d) => arabicDigits.indexOf(d).toString());
+};
+
+const getSaleLocalDateStr = (sale: SaleRecord): string => {
+  if (sale.createdAt) {
+    return getLocalYYYYMMDD(sale.createdAt);
+  }
+  const ts = parseInt(sale.id);
+  if (!isNaN(ts) && ts > 1000000000000) {
+    return getLocalYYYYMMDD(ts);
+  }
+  if (sale.timestamp) {
+    const cleanTs = convertArabicNumerals(sale.timestamp);
+    const dateMatch = cleanTs.match(/(\d{1,4})[^\d]*[\/\-][^\d]*(\d{1,2})[^\d]*[\/\-][^\d]*(\d{1,4})/);
+    if (dateMatch) {
+      const part1 = parseInt(dateMatch[1]);
+      const part2 = parseInt(dateMatch[2]);
+      const part3 = parseInt(dateMatch[3]);
+      if (part1 > 1900) {
+        return `${part1}-${String(part2).padStart(2, '0')}-${String(part3).padStart(2, '0')}`;
+      } else if (part3 > 1900) {
+        return `${part3}-${String(part2).padStart(2, '0')}-${String(part1).padStart(2, '0')}`;
+      }
+    }
+  }
+  return getLocalYYYYMMDD(new Date());
+};
+
 export default function App() {
   // --- STATE ---
   const [activeTab, setActiveTab] = useState<'POS' | 'OnlineOrders' | 'OnlineSetup' | 'History' | 'Prices' | 'Profits'>('OnlineOrders');
@@ -648,12 +711,13 @@ export default function App() {
 
   // Expenses State
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [expenseToDeleteId, setExpenseToDeleteId] = useState<string | null>(null);
 
   // Add Expense Form State
   const [expenseTitle, setExpenseTitle] = useState('');
   const [expenseCategory, setExpenseCategory] = useState('مواد خام');
   const [expenseAmount, setExpenseAmount] = useState('');
-  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [expenseDate, setExpenseDate] = useState(() => getLocalYYYYMMDD(new Date()));
   const [expenseNotes, setExpenseNotes] = useState('');
 
   // Profits Tab Filters State
@@ -661,9 +725,9 @@ export default function App() {
   const [profitsStartDate, setProfitsStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
+    return getLocalYYYYMMDD(d);
   });
-  const [profitsEndDate, setProfitsEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [profitsEndDate, setProfitsEndDate] = useState(() => getLocalYYYYMMDD(new Date()));
   const [profitsCategoryFilter, setProfitsCategoryFilter] = useState('all');
   const [profitsSearchQuery, setProfitsSearchQuery] = useState('');
 
@@ -718,29 +782,21 @@ export default function App() {
   // --- PROFITS AND EXPENSES FILTERED CALCULATIONS AND MUTATORS ---
   const filteredProfitsSales = useMemo(() => {
     return salesHistory.filter(sale => {
-      // Parse date from sale.id (Unix millisecond timestamp)
-      let saleDateStr = '';
-      const ts = parseInt(sale.id);
-      if (!isNaN(ts) && ts > 1000000000000) {
-        saleDateStr = new Date(ts).toISOString().split('T')[0];
-      } else {
-        // Fallback to today
-        saleDateStr = new Date().toISOString().split('T')[0];
-      }
+      const saleDateStr = getSaleLocalDateStr(sale);
 
       // Check date matching
       if (profitsDateRange === 'today') {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalYYYYMMDD(new Date());
         if (saleDateStr !== todayStr) return false;
       } else if (profitsDateRange === '7days') {
         const threshold = new Date();
         threshold.setDate(threshold.getDate() - 7);
-        const thresholdStr = threshold.toISOString().split('T')[0];
+        const thresholdStr = getLocalYYYYMMDD(threshold);
         if (saleDateStr < thresholdStr) return false;
       } else if (profitsDateRange === '30days') {
         const threshold = new Date();
         threshold.setDate(threshold.getDate() - 30);
-        const thresholdStr = threshold.toISOString().split('T')[0];
+        const thresholdStr = getLocalYYYYMMDD(threshold);
         if (saleDateStr < thresholdStr) return false;
       } else if (profitsDateRange === 'month') {
         const today = new Date();
@@ -770,17 +826,17 @@ export default function App() {
       // Date Range filter
       const expDateStr = exp.date; // YYYY-MM-DD
       if (profitsDateRange === 'today') {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalYYYYMMDD(new Date());
         if (expDateStr !== todayStr) return false;
       } else if (profitsDateRange === '7days') {
         const threshold = new Date();
         threshold.setDate(threshold.getDate() - 7);
-        const thresholdStr = threshold.toISOString().split('T')[0];
+        const thresholdStr = getLocalYYYYMMDD(threshold);
         if (expDateStr < thresholdStr) return false;
       } else if (profitsDateRange === '30days') {
         const threshold = new Date();
         threshold.setDate(threshold.getDate() - 30);
-        const thresholdStr = threshold.toISOString().split('T')[0];
+        const thresholdStr = getLocalYYYYMMDD(threshold);
         if (expDateStr < thresholdStr) return false;
       } else if (profitsDateRange === 'month') {
         const today = new Date();
@@ -840,7 +896,7 @@ export default function App() {
       setExpenseTitle('');
       setExpenseAmount('');
       setExpenseNotes('');
-      setExpenseDate(new Date().toISOString().split('T')[0]);
+      setExpenseDate(getLocalYYYYMMDD(new Date()));
 
       triggerNotice("تم تسجيل وإضافة المصروف بنجاح وسحابياً! 🎉", "success");
     } catch (err) {
@@ -850,8 +906,14 @@ export default function App() {
     }
   };
 
-  const handleDeleteExpense = async (id: string) => {
-    if (!window.confirm("هل أنت متأكد من رغبتك في حذف هذا المصروف نهائياً؟")) return;
+  const handleDeleteExpense = (id: string) => {
+    setExpenseToDeleteId(id);
+  };
+
+  const confirmDeleteExpense = async () => {
+    if (!expenseToDeleteId) return;
+    const id = expenseToDeleteId;
+    setExpenseToDeleteId(null);
     try {
       await deleteDoc(doc(db, 'expenses', id));
       triggerNotice("تم حذف المصروف بنجاح! 🗑️", "success");
@@ -1306,7 +1368,8 @@ export default function App() {
       receivedAmount: paymentMethod === 'cash' ? cashReceived : cartTotals.finalTotal,
       changeAmount: paymentMethod === 'cash' ? (cashReceived - cartTotals.finalTotal) : 0,
       bankSubMethod: paymentMethod === 'card' ? bankSubMethod : undefined,
-      customerName: customerName.trim() || undefined
+      customerName: customerName.trim() || undefined,
+      createdAt: Date.now()
     };
 
     setDoc(doc(db, 'sales', newSale.id), cleanForFirestore(newSale))
@@ -1361,7 +1424,8 @@ export default function App() {
         receivedAmount: order.total,
         changeAmount: 0,
         customerName: order.customerName,
-        isOnline: true
+        isOnline: true,
+        createdAt: Date.now()
       };
       await setDoc(doc(db, 'sales', saleId), cleanForFirestore(newSale));
 
@@ -1899,7 +1963,7 @@ export default function App() {
                           <span>المستلم: {order.customerName}</span>
                         </div>
                         <div className="text-[10px] text-slate-400 font-bold mt-1">
-                          تاريخ المعاملة: {order.timestamp}
+                          تاريخ المعاملة: {getFormattedDateTime(order)}
                         </div>
                       </div>
 
@@ -1941,7 +2005,21 @@ export default function App() {
             </div>
           ) : recentOnlineOrderId && activeCustomerOrder ? (
             /* --- SUBMITTED ORDER LIVE STATUS DIALOG --- */
-            <div className="max-w-2xl mx-auto bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-5 sm:space-y-6 animate-fadeIn">
+            <div className="max-w-2xl mx-auto bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 border-2 sm:border-4 border-slate-800 shadow-md sm:shadow-[8px_8px_0px_rgba(30,41,59,0.1)] space-y-5 sm:space-y-6 animate-fadeIn font-sans">
+              {/* Order Time and Date Info Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-dashed border-slate-200">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="bg-gradient-to-r from-pink-500 to-pink-600 text-white text-[11px] font-black px-2.5 py-1 rounded-lg font-mono shadow-sm">
+                    طلب رقم: {activeCustomerOrder.orderNumber}
+                  </span>
+                  <span className="text-xs font-black text-slate-800">👤 العميل: {activeCustomerOrder.customerName}</span>
+                </div>
+                <div className="text-[10px] text-slate-550 font-bold flex items-center gap-1.5">
+                  <span>📅 وقت وتاريخ الطلب:</span>
+                  <span className="font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">{getFormattedDateTime(activeCustomerOrder)}</span>
+                </div>
+              </div>
+
               {/* Status Stepper visualization */}
               <div className="grid grid-cols-3 gap-2 py-4 relative">
                 {/* Connector lines behind */}
@@ -3935,16 +4013,16 @@ export default function App() {
                               👤 {order.customerName}
                             </span>
                             {isList && (
-                              <span className="text-[10px] text-slate-400 font-bold block">
-                                {order.timestamp.split('،')[1]?.trim() || order.timestamp}
+                              <span className="text-[10px] text-slate-500 font-bold block">
+                                📅 {getFormattedDateTime(order)}
                               </span>
                             )}
                           </div>
 
                           <div className="text-left flex flex-col items-end shrink-0">
                             {!isList && (
-                              <span className="text-[10px] text-slate-400 font-bold mb-1">
-                                {order.timestamp.split('،')[1]?.trim() || order.timestamp}
+                              <span className="text-[10px] text-slate-500 font-bold mb-1">
+                                📅 {getFormattedDateTime(order)}
                               </span>
                             )}
                             <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-lg border ${statusConfig.badgeBg}`}>
@@ -6228,6 +6306,56 @@ export default function App() {
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
+      {/* --- CUSTOM DELETE EXPENSE CONFIRMATION DIALOG --- */}
+      <AnimatePresence>
+        {expenseToDeleteId && (() => {
+          const exp = expenses.find(e => e.id === expenseToDeleteId);
+          if (!exp) return null;
+          return (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white border-4 border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative"
+                dir="rtl"
+              >
+                <div className="w-16 h-16 bg-rose-100 border-2 border-rose-500 rounded-full flex items-center justify-center text-3xl mx-auto animate-bounce">
+                  🗑️
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">تأكيد حذف المصروف</h3>
+                  <p className="text-xs text-slate-600 font-extrabold mt-2 leading-relaxed">
+                    هل تريد بالتأكيد حذف هذا المصروف الصادر نهائياً من النظام والسحابة؟
+                  </p>
+                  <div className="mt-3 bg-slate-50 border-2 border-slate-200 rounded-2xl p-3 text-right space-y-1">
+                    <div className="text-[11px] font-bold text-slate-500">اسم المصروف: <span className="font-black text-slate-800">{exp.title}</span></div>
+                    <div className="text-[11px] font-bold text-slate-500">الفئة: <span className="font-black text-slate-800">{exp.category}</span></div>
+                    <div className="text-[11px] font-bold text-slate-500">المبلغ: <span className="font-black text-rose-650">{exp.amount.toFixed(2)} ر.س</span></div>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={confirmDeleteExpense}
+                    className="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-black text-xs py-3 rounded-xl transition cursor-pointer shadow-md active:scale-95"
+                  >
+                    نعم، احذف المصروف 🗑️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpenseToDeleteId(null)}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-black text-xs py-3 rounded-xl transition cursor-pointer active:scale-95"
+                  >
+                    إلغاء ❌
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* --- FOOTER STATEMENT (تذييل التطبيق) --- */}
