@@ -3059,14 +3059,7 @@ export default function App() {
         <footer className="mt-16 text-center text-xs text-slate-400 select-none pb-8 space-y-2">
           <p className="font-extrabold text-pink-400 tracking-wide font-sans">ادفع لاحقاً نقداً أو شبكة يدوياً عند استلام الكوب اللذيذ من لوحة الكاشير 🍦</p>
           <p className="mt-1.5 opacity-75 font-bold">كل آيس كريم يصنع بشغف لابتسامتكم • سحر الآيس كريم</p>
-          <div className="pt-2 opacity-50 hover:opacity-100 transition">
-            <a 
-              href="#/seller" 
-              className="text-[10px] bg-slate-100/80 text-slate-500 hover:text-slate-850 rounded-lg px-2.5 py-1.5 hover:bg-slate-200"
-            >
-              الولوج لكاشير المبيعات / الإدارة ⚙️
-            </a>
-          </div>
+
         </footer>
 
 
