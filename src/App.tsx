@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Component, ReactNode, ErrorInfo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   IceCream,
@@ -76,12 +76,15 @@ const convertArabicNumerals = (str: string): string => {
 };
 
 const getSaleLocalDateStr = (sale: SaleRecord): string => {
+  if (!sale) return getLocalYYYYMMDD(new Date());
   if (sale.createdAt) {
     return getLocalYYYYMMDD(sale.createdAt);
   }
-  const ts = parseInt(sale.id);
-  if (!isNaN(ts) && ts > 1000000000000) {
-    return getLocalYYYYMMDD(ts);
+  if (sale.id) {
+    const ts = parseInt(sale.id);
+    if (!isNaN(ts) && ts > 1000000000000) {
+      return getLocalYYYYMMDD(ts);
+    }
   }
   if (sale.timestamp) {
     const cleanTs = convertArabicNumerals(sale.timestamp);
@@ -737,15 +740,20 @@ export default function App() {
   const [ledgerContainerFilter, setLedgerContainerFilter] = useState<string>('all');
   const [ledgerSourceFilter, setLedgerSourceFilter] = useState<'all' | 'pos' | 'online'>('all');
 
-  const filteredSalesHistory = salesHistory.filter(sale => {
+  const filteredSalesHistory = (salesHistory || []).filter(sale => {
+    if (!sale) return false;
+    const orderNum = sale.orderNumber || '';
+    const custName = sale.customerName || '';
+    const items = sale.items || [];
+
     // 1. Search Query filter (matches order number, customer name, flavors, container, toppins, etc)
     const matchesSearch = ledgerSearch.trim() === '' || (
-      sale.orderNumber.toLowerCase().includes(ledgerSearch.toLowerCase()) ||
-      (sale.customerName && sale.customerName.toLowerCase().includes(ledgerSearch.toLowerCase())) ||
-      sale.items.some(item => 
-        item.container.name.toLowerCase().includes(ledgerSearch.toLowerCase()) ||
-        item.flavors.some(f => f.name.toLowerCase().includes(ledgerSearch.toLowerCase())) ||
-        item.toppings.some(t => t.name.toLowerCase().includes(ledgerSearch.toLowerCase()))
+      orderNum.toLowerCase().includes(ledgerSearch.toLowerCase()) ||
+      custName.toLowerCase().includes(ledgerSearch.toLowerCase()) ||
+      items.some(item => 
+        (item?.container?.name || '').toLowerCase().includes(ledgerSearch.toLowerCase()) ||
+        (item?.flavors || []).some(f => (f?.name || '').toLowerCase().includes(ledgerSearch.toLowerCase())) ||
+        (item?.toppings || []).some(t => (t?.name || '').toLowerCase().includes(ledgerSearch.toLowerCase()))
       )
     );
 
@@ -763,7 +771,7 @@ export default function App() {
     }
 
     // 3. Container filter
-    const matchesContainer = ledgerContainerFilter === 'all' || sale.items.some(item => item.container.id === ledgerContainerFilter);
+    const matchesContainer = ledgerContainerFilter === 'all' || items.some(item => item?.container?.id === ledgerContainerFilter);
 
     // 4. Source Filter (Kashier / Self-Service Online)
     let matchesSource = true;
@@ -810,21 +818,22 @@ export default function App() {
   }, [salesHistory, profitsDateRange, profitsStartDate, profitsEndDate]);
 
   const filteredProfitsExpenses = useMemo(() => {
-    return expenses.filter(exp => {
+    return (expenses || []).filter(exp => {
+      if (!exp) return false;
       // Category filter
       if (profitsCategoryFilter !== 'all' && exp.category !== profitsCategoryFilter) return false;
 
       // Search query
       if (profitsSearchQuery.trim() !== '') {
         const q = profitsSearchQuery.toLowerCase();
-        const matchesTitle = exp.title.toLowerCase().includes(q);
-        const matchesCategory = exp.category.toLowerCase().includes(q);
+        const matchesTitle = (exp.title || '').toLowerCase().includes(q);
+        const matchesCategory = (exp.category || '').toLowerCase().includes(q);
         const matchesNotes = exp.notes && exp.notes.toLowerCase().includes(q);
         if (!matchesTitle && !matchesCategory && !matchesNotes) return false;
       }
 
       // Date Range filter
-      const expDateStr = exp.date; // YYYY-MM-DD
+      const expDateStr = exp.date || ''; // YYYY-MM-DD
       if (profitsDateRange === 'today') {
         const todayStr = getLocalYYYYMMDD(new Date());
         if (expDateStr !== todayStr) return false;
@@ -851,15 +860,17 @@ export default function App() {
   }, [expenses, profitsCategoryFilter, profitsSearchQuery, profitsDateRange, profitsStartDate, profitsEndDate]);
 
   const profitStats = useMemo(() => {
-    const totalRev = filteredProfitsSales.reduce((sum, s) => sum + (s.subtotal !== undefined ? s.subtotal : s.total), 0);
-    const totalExp = filteredProfitsExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalRev = (filteredProfitsSales || []).reduce((sum, s) => sum + (s?.subtotal !== undefined ? s.subtotal : (s?.total || 0)), 0);
+    const totalExp = (filteredProfitsExpenses || []).reduce((sum, e) => sum + (e?.amount || 0), 0);
     const netProfit = totalRev - totalExp;
     const profitMargin = totalRev > 0 ? (netProfit / totalRev) * 100 : 0;
     
     // Group expenses by category
     const expensesByCategory: { [key: string]: number } = {};
-    filteredProfitsExpenses.forEach(exp => {
-      expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + exp.amount;
+    (filteredProfitsExpenses || []).forEach(exp => {
+      if (exp && exp.category) {
+        expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + (exp.amount || 0);
+      }
     });
 
     return {
@@ -940,18 +951,18 @@ export default function App() {
       if (item.toppings.length > 0) {
         text += `• إضافات: ${item.toppings.map(t => t.name).join(' + ')}\n`;
       }
-      text += `• السعر: ${item.itemTotal.toFixed(2)} ريال\n\n`;
+      text += `• السعر: ${(item?.itemTotal || 0).toFixed(2)} ريال\n\n`;
     });
 
     text += `--------------------------------\n`;
-    text += `*المجموع الفرعي للآيس كريم:* ${order.subtotal.toFixed(2)} ريال\n`;
-    if (order.toppingsTotal > 0) {
-      text += `*إجمالي الإضافات المميزة:* +${order.toppingsTotal.toFixed(2)} ريال\n`;
+    text += `*المجموع الفرعي للآيس كريم:* ${(order?.subtotal || 0).toFixed(2)} ريال\n`;
+    if ((order?.toppingsTotal || 0) > 0) {
+      text += `*إجمالي الإضافات المميزة:* +${(order?.toppingsTotal || 0).toFixed(2)} ريال\n`;
     }
-    if (order.discountAmount > 0) {
-      text += `*الخصومات المقتطعة:* -${order.discountAmount.toFixed(2)} ريال\n* تفاصيل الخصم:* ${order.calculatedDiscountName}\n`;
+    if ((order?.discountAmount || 0) > 0) {
+      text += `*الخصومات المقتطعة:* -${(order?.discountAmount || 0).toFixed(2)} ريال\n* تفاصيل الخصم:* ${order?.calculatedDiscountName || ''}\n`;
     }
-    text += `*الحساب الإجمالي المقبوض:* ${order.total.toFixed(2)} ريال\n`;
+    text += `*الحساب الإجمالي المقبوض:* ${(order?.total || 0).toFixed(2)} ريال\n`;
 
     const methodText = order.paymentMethod === 'cash'
       ? 'نقداً / كاش'
@@ -1165,7 +1176,7 @@ export default function App() {
     if (viewMode === 'seller' && pendingCount > previousPendingCount) {
       playChime();
       const latestOrder = onlineOrders.find(o => o.status === 'pending');
-      triggerNotice(`📥 تم استلام طلب ذاتي جديد من ${latestOrder?.customerName || 'عميل'} بقيمة ${latestOrder?.total.toFixed(2)} ريال!`, 'info');
+      triggerNotice(`📥 تم استلام طلب ذاتي جديد من ${latestOrder?.customerName || 'عميل'} بقيمة ${(latestOrder?.total || 0).toFixed(2)} ريال!`, 'info');
     }
     setPreviousPendingCount(pendingCount);
   }, [pendingCount, viewMode, onlineOrders]);
@@ -1182,10 +1193,10 @@ export default function App() {
 
   // --- ICE CREAM ITEM PRICING LOGIC ---
   const currentItemPrices = useMemo(() => {
-    const containerPrice = selectedContainer.price;
+    const containerPrice = selectedContainer?.price || 0;
     // Premium flavors calculate extra
-    const flavorsPrice = selectedFlavors.reduce((sum, flavor) => sum + flavor.price, 0);
-    const toppingsPrice = selectedToppings.reduce((sum, topping) => sum + topping.price, 0);
+    const flavorsPrice = (selectedFlavors || []).reduce((sum, flavor) => sum + (flavor?.price || 0), 0);
+    const toppingsPrice = (selectedToppings || []).reduce((sum, topping) => sum + (topping?.price || 0), 0);
     const itemUnitBase = containerPrice + flavorsPrice;
     const totalUnit = itemUnitBase + toppingsPrice;
     
@@ -1195,21 +1206,21 @@ export default function App() {
       toppingsPrice,
       itemUnitBase,
       totalUnit,
-      totalGroup: totalUnit * quantity
+      totalGroup: totalUnit * (quantity || 1)
     };
   }, [selectedContainer, selectedFlavors, selectedToppings, quantity]);
 
   // Handle flavor selection limit to 3 scoops
   const handleFlavorToggle = (flavor: FlavorOption) => {
     setSelectedFlavors(prev => {
-      const exists = prev.some(f => f.id === flavor.id);
+      const exists = (prev || []).some(f => f?.id === flavor.id);
       if (exists) {
         // Must have at least one flavor
         if (prev.length <= 1) {
           triggerNotice('يجب مِلء الآيس كريم بنكهة واحدة على الأقل!', 'error');
           return prev;
         }
-        return prev.filter(f => f.id !== flavor.id);
+        return prev.filter(f => f?.id !== flavor.id);
       } else {
         if (prev.length >= 3) {
           triggerNotice('الحد الأقصى هو 3 نكهات (طابات) متراصة للطلب الواحد!', 'info');
@@ -1223,9 +1234,9 @@ export default function App() {
   // Handle toppings selection
   const handleToppingToggle = (topping: ToppingOption) => {
     setSelectedToppings(prev => {
-      const exists = prev.some(t => t.id === topping.id);
+      const exists = (prev || []).some(t => t?.id === topping.id);
       if (exists) {
-        return prev.filter(t => t.id !== topping.id);
+        return prev.filter(t => t?.id !== topping.id);
       } else {
         return [...prev, topping];
       }
@@ -1234,7 +1245,11 @@ export default function App() {
 
   // --- ADD TO CART ---
   const handleAddToCart = () => {
-    if (selectedFlavors.length === 0) {
+    if (!selectedContainer) {
+      triggerNotice('الرجاء اختيار وعاء التقديم!', 'error');
+      return;
+    }
+    if (!selectedFlavors || selectedFlavors.length === 0) {
       triggerNotice('الرجاء اختيار نكهة واحدة على الأقل للآيس كريم!', 'error');
       return;
     }
@@ -1243,15 +1258,15 @@ export default function App() {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       container: selectedContainer,
       flavors: [...selectedFlavors],
-      toppings: [...selectedToppings],
-      quantity: quantity,
-      basePrice: selectedContainer.price + selectedFlavors.reduce((sum, f) => sum + f.price, 0),
-      toppingsPrice: selectedToppings.reduce((sum, t) => sum + t.price, 0),
+      toppings: [...(selectedToppings || [])],
+      quantity: quantity || 1,
+      basePrice: (selectedContainer.price || 0) + (selectedFlavors || []).reduce((sum, f) => sum + (f?.price || 0), 0),
+      toppingsPrice: (selectedToppings || []).reduce((sum, t) => sum + (t?.price || 0), 0),
       itemTotal: currentItemPrices.totalGroup
     };
 
     setCart(prev => [...prev, newItem]);
-    triggerNotice(`تمت إضافة ${quantity} آيس كريم نكهة ${selectedFlavors[0].name} إلى قائمة الطلبات!`, 'success');
+    triggerNotice(`تمت إضافة ${quantity || 1} آيس كريم نكهة ${selectedFlavors[0]?.name || ''} إلى قائمة الطلبات!`, 'success');
     
     // Reset selections for next item but keep container preference
     setSelectedFlavors([flavors[0] || FLAVOR_OPTIONS[0]]);
@@ -1309,12 +1324,12 @@ export default function App() {
 
   // Automatically populate tenderedAmount with the net total as a default value
   useEffect(() => {
-    if (cartTotals.finalTotal > 0) {
-      setTenderedAmount(cartTotals.finalTotal.toFixed(2));
+    if ((cartTotals?.finalTotal || 0) > 0) {
+      setTenderedAmount((cartTotals?.finalTotal || 0).toFixed(2));
     } else {
       setTenderedAmount('');
     }
-  }, [cartTotals.finalTotal]);
+  }, [cartTotals?.finalTotal]);
 
   // Calculate change due
   const changeDue = useMemo(() => {
@@ -1350,7 +1365,7 @@ export default function App() {
       discountsApplied.push(cartTotals.autoDiscountName);
     }
     if (manualDiscountVal > 0) {
-      discountsApplied.push(`خصم يدوي خارجي (${manualDiscountVal.toFixed(2)} ر.س)`);
+      discountsApplied.push(`خصم يدوي خارجي (${(manualDiscountVal || 0).toFixed(2)} ر.س)`);
     }
     const discountNameString = discountsApplied.join(' + ') || 'لا يوجد';
 
@@ -1727,12 +1742,13 @@ export default function App() {
     let onlineRevenue = 0;
     let posOrdersCount = 0;
 
-    salesHistory.forEach(sale => {
-      const saleSubtotal = sale.subtotal !== undefined ? sale.subtotal : sale.total;
+    (salesHistory || []).forEach(sale => {
+      if (!sale) return;
+      const saleSubtotal = sale.subtotal !== undefined ? sale.subtotal : (sale.total || 0);
       totalRevenue += saleSubtotal;
       totalDiscountsGiven += 0;
 
-      const isSaleOnline = sale.isOnline || sale.calculatedDiscountName?.includes('أونلاين');
+      const isSaleOnline = sale.isOnline || (sale.calculatedDiscountName && sale.calculatedDiscountName.includes('أونلاين'));
       if (isSaleOnline) {
         onlineOrdersCount += 1;
         onlineRevenue += saleSubtotal;
@@ -1740,10 +1756,11 @@ export default function App() {
         posOrdersCount += 1;
       }
 
-      sale.items.forEach(item => {
-        itemsSold += item.quantity;
-        if (item.container.id === 'cup') cupCount += item.quantity;
-        if (item.container.id === 'cone') coneCount += item.quantity;
+      (sale.items || []).forEach(item => {
+        if (!item) return;
+        itemsSold += (item.quantity || 0);
+        if (item.container?.id === 'cup') cupCount += (item.quantity || 0);
+        if (item.container?.id === 'cone') coneCount += (item.quantity || 0);
       });
     });
 
@@ -1753,7 +1770,7 @@ export default function App() {
       cupCount,
       coneCount,
       totalDiscountsGiven,
-      ordersCount: salesHistory.length,
+      ordersCount: (salesHistory || []).length,
       onlineOrdersCount,
       onlineRevenue,
       posOrdersCount
@@ -1907,7 +1924,7 @@ export default function App() {
                   </div>
                   <div className="text-right flex flex-col leading-tight font-sans">
                     <span className="text-[8px] font-extrabold text-pink-100">سلة طلباتي</span>
-                    <span className="text-[10px] font-black">{customerTotals.finalTotal.toFixed(2)} ر.س</span>
+                    <span className="text-[10px] font-black">{(customerTotals?.finalTotal || 0).toFixed(2)} ر.س</span>
                   </div>
                 </motion.button>
               )}
@@ -1943,12 +1960,12 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-4 overflow-y-auto max-h-[70vh] pr-1">
-                  {myPastOrders.map((order, idx) => (
-                    <div key={order.id || idx} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden">
+                  {(myPastOrders || []).map((order, idx) => (
+                    <div key={order?.id || idx} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden">
                       {/* Delete past order from history */}
                       <button
                         type="button"
-                        onClick={() => handleDeletePastOrder(order.id)}
+                        onClick={() => handleDeletePastOrder(order?.id || '')}
                         className="absolute top-3 left-3 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 text-[10px] font-black px-2 py-1.5 rounded-xl border border-red-200 transition cursor-pointer hover:scale-105 active:scale-95 duration-100"
                         title="حذف من السجل"
                       >
@@ -1958,9 +1975,9 @@ export default function App() {
                       <div className="pl-16">
                         <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-800">
                           <span className="bg-gradient-to-r from-pink-500 to-pink-600 text-white px-2 py-0.5 rounded-lg font-mono">
-                            {order.orderNumber}
+                            {order?.orderNumber || ''}
                           </span>
-                          <span>المستلم: {order.customerName}</span>
+                          <span>المستلم: {order?.customerName || ''}</span>
                         </div>
                         <div className="text-[10px] text-slate-400 font-bold mt-1">
                           تاريخ المعاملة: {getFormattedDateTime(order)}
@@ -1968,14 +1985,14 @@ export default function App() {
                       </div>
 
                       <div className="border-t border-dashed border-slate-200 pt-2.5 space-y-2">
-                        {order.items.map((item, itemIdx) => (
+                        {(order?.items || []).map((item, itemIdx) => (
                           <div key={itemIdx} className="text-[11px] text-slate-600 font-bold flex justify-between items-center bg-white/60 p-2 rounded-xl border border-slate-100/60">
                             <span className="max-w-[70%] text-right font-sans">
-                              🥣 {item.container.name} ×{item.quantity} ({item.flavors.map(f => f.name).join(' ، ')})
-                              {item.toppings.length > 0 && ` + تزيين بـ: ${item.toppings.map(t => t.name).join('، ')}`}
+                              🥣 {item?.container?.name || ''} ×{item?.quantity || 1} ({(item?.flavors || []).map(f => f?.name || '').join(' ، ')})
+                              {(item?.toppings || []).length > 0 && ` + تزيين بـ: ${(item?.toppings || []).map(t => t?.name || '').join('، ')}`}
                             </span>
                             <span className="font-mono text-slate-700 font-black shrink-0">
-                              {((item.basePrice + item.toppingsPrice) * item.quantity).toFixed(2)} ر.س
+                              {(((item?.basePrice || 0) + (item?.toppingsPrice || 0)) * (item?.quantity || 1)).toFixed(2)} ر.س
                             </span>
                           </div>
                         ))}
@@ -1983,7 +2000,7 @@ export default function App() {
 
                       <div className="border-t border-dashed border-slate-200 pt-2 flex justify-between items-center text-xs font-black">
                         <span className="text-slate-500">القيمة الإجمالية المدفوعة:</span>
-                        <span className="text-pink-600 font-mono text-xs">{order.total.toFixed(2)} ريال سعودي</span>
+                        <span className="text-pink-600 font-mono text-xs">{(order?.total || 0).toFixed(2)} ريال سعودي</span>
                       </div>
                     </div>
                   ))}
@@ -2065,7 +2082,7 @@ export default function App() {
                 {activeCustomerOrder.status === 'prepared' && (
                   <div className="space-y-4 flex flex-col items-center">
                     <p className="text-base font-black text-blue-600 animate-bounce text-center">🍦✨ طلبك البارد الرائع جاهز ومكتمل للاستلام في طابور المحل! هنيئاً وعافية مقدماً.</p>
-                    <p className="text-xs text-slate-550 font-bold text-center">يرجى تمرير رقم طلبك <span className="font-mono text-pink-600 font-extrabold">{activeCustomerOrder.orderNumber}</span> للبائع وسداد القيمة {activeCustomerOrder.total.toFixed(2)} ر.س واستلام الآيس كريم!</p>
+                    <p className="text-xs text-slate-550 font-bold text-center">يرجى تمرير رقم طلبك <span className="font-mono text-pink-600 font-extrabold">{activeCustomerOrder.orderNumber}</span> للبائع وسداد القيمة {(activeCustomerOrder?.total || 0).toFixed(2)} ر.س واستلام الآيس كريم!</p>
                     
                     {/* Order Received Button moved above the automatic redirect countdown */}
                     <button
@@ -2105,27 +2122,27 @@ export default function App() {
               <div className="border-t border-dashed border-slate-200 pt-6 space-y-4 select-text font-sans">
                 <span className="font-black text-sm text-slate-700 block text-right border-r-4 border-pink-500 pr-2">ملخص طلبك المصمم:</span>
                 <div className="space-y-3 font-sans">
-                  {activeCustomerOrder.items.map((item, idx) => (
+                  {(activeCustomerOrder?.items || []).map((item, idx) => (
                     <div key={idx} className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                       <div className="space-y-1">
-                        <span className="font-black text-slate-800 text-sm">{item.container.name} ×{item.quantity}</span>
+                        <span className="font-black text-slate-800 text-sm">{item?.container?.name || ''} ×{item?.quantity || 1}</span>
                         <div className="text-[11px] text-slate-500 font-bold">
-                          🥣 كرات الطعم: {item.flavors.map(f => `${f.emoji} ${f.name}`).join(' ، ')}
+                          🥣 كرات الطعم: {(item?.flavors || []).map(f => `${f?.emoji || ''} ${f?.name || ''}`).join(' ، ')}
                         </div>
-                        {item.toppings.length > 0 && (
+                        {(item?.toppings || []).length > 0 && (
                           <div className="text-[11px] text-emerald-600 font-black">
-                            ✨ تزيين بـ: {item.toppings.map(t2 => `${t2.emoji} ${t2.name}`).join(' + ')}
+                            ✨ تزيين بـ: {(item?.toppings || []).map(t2 => `${t2?.emoji || ''} ${t2?.name || ''}`).join(' + ')}
                           </div>
                         )}
                       </div>
-                      <span className="font-mono font-black text-slate-700 text-sm shrink-0">{(item.basePrice + item.toppingsPrice) * item.quantity} ريال</span>
+                      <span className="font-mono font-black text-slate-700 text-sm shrink-0">{(((item?.basePrice || 0) + (item?.toppingsPrice || 0)) * (item?.quantity || 1)).toFixed(2)} ريال</span>
                     </div>
                   ))}
                 </div>
 
                 <div className="pt-2 flex justify-between items-center text-sm font-black text-slate-800">
                   <span>المبلغ الإجمالي المطلق للدفع:</span>
-                  <span className="text-lg font-mono text-pink-600">{activeCustomerOrder.total.toFixed(2)} ريال سعودي</span>
+                  <span className="text-lg font-mono text-pink-600">{(activeCustomerOrder?.total || 0).toFixed(2)} ريال سعودي</span>
                 </div>
 
                 <div className="flex justify-between items-center text-xs font-bold text-slate-500 border-t border-dashed pt-3 mt-1">
@@ -2248,7 +2265,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {customerCart.map((item, index) => (
+                      {(customerCart || []).map((item, index) => (
                         <div key={index} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden flex flex-col justify-between">
                           <button
                             onClick={() => handleRemoveCustItemFromCart(index)}
@@ -2259,13 +2276,13 @@ export default function App() {
                           </button>
                           
                           <div className="text-right pl-8">
-                            <span className="text-xs font-black text-slate-800 block">{item.container.name}</span>
+                            <span className="text-xs font-black text-slate-800 block">{item?.container?.name || ''}</span>
                             <div className="text-[10px] text-slate-500 font-bold mt-1.5 leading-relaxed">
-                              النكهات: {item.flavors.map(f => f.name).join('، ')}
+                              النكهات: {(item?.flavors || []).map(f => f?.name || '').join('، ')}
                             </div>
-                            {item.toppings.length > 0 && (
+                            {(item?.toppings || []).length > 0 && (
                               <div className="text-[10px] text-emerald-600 font-black mt-1 leading-relaxed">
-                                إضافات: {item.toppings.map(t3 => t3.name).join(' + ')}
+                                إضافات: {(item?.toppings || []).map(t3 => t3?.name || '').join(' + ')}
                               </div>
                             )}
                           </div>
@@ -2292,7 +2309,7 @@ export default function App() {
                               </button>
                             </div>
 
-                            <span className="font-mono text-xs font-black text-slate-800">{item.itemTotal.toFixed(2)} ر.س</span>
+                            <span className="font-mono text-xs font-black text-slate-800">{(item?.itemTotal || 0).toFixed(2)} ر.س</span>
                           </div>
                         </div>
                       ))}
@@ -2463,27 +2480,27 @@ export default function App() {
                     <div className="space-y-2.5 font-sans text-xs">
                       <div className="flex justify-between text-slate-500 font-bold">
                         <span>المجموع الفرعي للأكواب:</span>
-                        <span className="font-mono">{customerTotals.subtotal.toFixed(2)} ر.س</span>
+                        <span className="font-mono">{(customerTotals?.subtotal || 0).toFixed(2)} ر.س</span>
                       </div>
-                      {customerTotals.toppingsSubtotal > 0 && (
+                      {(customerTotals?.toppingsSubtotal || 0) > 0 && (
                         <div className="flex justify-between text-slate-500 font-bold">
                           <span>ملحقات الإضافات الفخمة:</span>
-                          <span className="font-mono">+{customerTotals.toppingsSubtotal.toFixed(2)} ر.س</span>
+                          <span className="font-mono">+{(customerTotals?.toppingsSubtotal || 0).toFixed(2)} ر.س</span>
                         </div>
                       )}
-                      {customerTotals.autoDiscountPercent > 0 && (
+                      {(customerTotals?.autoDiscountPercent || 0) > 0 && (
                         <div className="bg-emerald-50 text-emerald-700 py-2.5 px-3 rounded-xl border border-emerald-100 flex flex-col gap-1 text-[11px]">
                           <div className="flex justify-between font-black">
                             <span>العرض التلقائي للخدمة الذاتية:</span>
-                            <span className="font-mono">-{customerTotals.autoDiscountPercent}%</span>
+                            <span className="font-mono">-{customerTotals?.autoDiscountPercent}%</span>
                           </div>
-                          <span className="text-[10px] font-black leading-relaxed">{customerTotals.autoDiscountName}</span>
+                          <span className="text-[10px] font-black leading-relaxed">{customerTotals?.autoDiscountName}</span>
                         </div>
                       )}
 
                       <div className="flex justify-between items-center text-sm font-black text-slate-850 pt-3 border-t-2 border-dashed border-slate-200">
                         <span>قيمة الدفع الإجمالية:</span>
-                        <span className="text-lg font-mono text-pink-600">{customerTotals.finalTotal.toFixed(2)} ريال</span>
+                        <span className="text-lg font-mono text-pink-600">{(customerTotals?.finalTotal || 0).toFixed(2)} ريال</span>
                       </div>
                     </div>
 
@@ -2598,7 +2615,7 @@ export default function App() {
                           <span className={`px-4 py-1.5 rounded-full font-black text-xs border-2 ${
                             isSelected ? 'bg-pink-505 border-pink-600 text-white shadow-sm' : 'bg-pink-50 border-pink-100 text-pink-600'
                           }`} style={{ borderColor: isSelected ? '#ec4899' : '#fbcfe8', backgroundColor: isSelected ? '#ec4899' : '#fdf2f8' }}>
-                            {opt.price.toFixed(2)} ر.س
+                            {(opt?.price || 0).toFixed(2)} ر.س
                           </span>
                         )}
                       </button>
@@ -2649,8 +2666,8 @@ export default function App() {
                           <span className="font-black block truncate">{opt.name}</span>
                           {!isAvailable ? (
                             <span className="text-[9px] font-black block mt-0.5 text-rose-500">غير متوفر ❌</span>
-                          ) : opt.price > 0 ? (
-                            <span className="text-[9px] font-bold block mt-0.5 opacity-80 font-mono">+{opt.price.toFixed(2)} ر.س</span>
+                          ) : (opt?.price || 0) > 0 ? (
+                            <span className="text-[9px] font-bold block mt-0.5 opacity-80 font-mono">+{(opt?.price || 0).toFixed(2)} ر.س</span>
                           ) : null}
                         </div>
                         {countSelected > 0 && (
@@ -2699,7 +2716,7 @@ export default function App() {
                           {!isAvailable ? (
                             <span className="text-[9px] font-black block mt-0.5 text-rose-500">غير متوفر ❌</span>
                           ) : (
-                            <span className="text-[9px] font-bold block opacity-80 font-mono">{opt.price === 0 ? 'مجاناً ✨' : `+${opt.price.toFixed(2)} ر.س`}</span>
+                            <span className="text-[9px] font-bold block opacity-80 font-mono">{opt.price === 0 ? 'مجاناً ✨' : `+${(opt?.price || 0).toFixed(2)} ر.س`}</span>
                           )}
                         </div>
                       </button>
@@ -2743,7 +2760,7 @@ export default function App() {
                       </div>
                       
                       <div className="space-y-3">
-                        {customerCart.map((item, index) => (
+                        {(customerCart || []).map((item, index) => (
                           <div key={index} className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-3 relative overflow-hidden flex flex-col justify-between">
                             <button
                               onClick={() => handleRemoveCustItemFromCart(index)}
@@ -2754,13 +2771,13 @@ export default function App() {
                             </button>
                             
                             <div className="text-right pl-8">
-                              <span className="text-xs font-black text-slate-800 block">{item.container.name}</span>
+                              <span className="text-xs font-black text-slate-800 block">{item?.container?.name || ''}</span>
                               <div className="text-[10px] text-slate-500 font-bold mt-1.5 leading-relaxed">
-                                النكهات: {item.flavors.map(f => f.name).join('، ')}
+                                النكهات: {(item?.flavors || []).map(f => f?.name || '').join('، ')}
                               </div>
-                              {item.toppings.length > 0 && (
+                              {(item?.toppings || []).length > 0 && (
                                 <div className="text-[10px] text-emerald-600 font-black mt-1 leading-relaxed">
-                                  إضافات: {item.toppings.map(t3 => t3.name).join(' + ')}
+                                  إضافات: {(item?.toppings || []).map(t3 => t3?.name || '').join(' + ')}
                                 </div>
                               )}
                             </div>
@@ -2787,7 +2804,7 @@ export default function App() {
                                 </button>
                               </div>
 
-                              <span className="font-mono text-xs font-black text-slate-805">{(item.itemTotal).toFixed(2)} ر.س</span>
+                              <span className="font-mono text-xs font-black text-slate-805">{(item?.itemTotal || 0).toFixed(2)} ر.س</span>
                             </div>
                           </div>
                         ))}
@@ -2957,18 +2974,18 @@ export default function App() {
                         <div className="space-y-2.5 font-sans text-xs">
                           <div className="flex justify-between text-slate-500 font-bold">
                             <span>المجموع الفرعي للأكواب:</span>
-                            <span className="font-mono">{customerTotals.subtotal.toFixed(2)} ر.س</span>
+                            <span className="font-mono">{(customerTotals?.subtotal || 0).toFixed(2)} ر.س</span>
                           </div>
-                          {customerTotals.toppingsSubtotal > 0 && (
+                          {(customerTotals?.toppingsSubtotal || 0) > 0 && (
                             <div className="flex justify-between text-slate-500 font-bold">
                               <span>ملحقات الإضافات الفخمة:</span>
-                              <span className="font-mono">+{customerTotals.toppingsSubtotal.toFixed(2)} ر.س</span>
+                              <span className="font-mono">+{(customerTotals?.toppingsSubtotal || 0).toFixed(2)} ر.س</span>
                             </div>
                           )}
 
                           <div className="flex justify-between items-center text-sm font-black text-slate-850 pt-3 border-t-2 border-dashed border-slate-200">
                             <span>قيمة الدفع الإجمالية:</span>
-                            <span className="text-lg font-mono text-pink-600">{customerTotals.finalTotal.toFixed(2)} ريال</span>
+                            <span className="text-lg font-mono text-pink-600">{(customerTotals?.finalTotal || 0).toFixed(2)} ريال</span>
                           </div>
                         </div>
 
@@ -3116,16 +3133,16 @@ export default function App() {
             <div className="text-left bg-pink-50/70 py-2 px-5 rounded-2xl border-2 border-pink-150 flex flex-col items-end shrink-0 w-full sm:w-auto font-sans">
               <div className="text-3xl font-black text-slate-800 font-mono leading-none">
                 {activeTab === 'POS' 
-                  ? cartTotals.finalTotal.toFixed(2) 
+                  ? (cartTotals?.finalTotal || 0).toFixed(2) 
                   : activeTab === 'OnlineOrders'
                     ? onlineOrders.length
                     : activeTab === 'OnlineSetup'
                       ? 'نشط'
                       : activeTab === 'History' 
-                        ? salesStats.totalRevenue.toFixed(2) 
+                        ? (salesStats?.totalRevenue || 0).toFixed(2) 
                         : activeTab === 'Prices'
                           ? (containers.length + flavors.length + toppings.length).toFixed(0)
-                          : (salesStats.totalRevenue - expenses.reduce((acc, exp) => acc + exp.amount, 0)).toFixed(2)}
+                          : ((salesStats?.totalRevenue || 0) - (expenses || []).reduce((acc, exp) => acc + (exp?.amount || 0), 0)).toFixed(2)}
                 <span className="text-xs font-bold mr-1 text-pink-600">
                   {activeTab === 'OnlineOrders' ? 'طلب' : activeTab === 'OnlineSetup' ? 'بث' : activeTab === 'Prices' ? 'مادة' : 'ريال'}
                 </span>
@@ -3263,8 +3280,8 @@ export default function App() {
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {containers.filter(opt => opt.isHidden !== true).map(opt => {
-                    const isSelected = selectedContainer.id === opt.id;
+                  {(containers || []).filter(opt => opt?.isHidden !== true).map(opt => {
+                    const isSelected = selectedContainer && selectedContainer.id === opt.id;
                     return (
                       <button
                         key={opt.id}
@@ -3284,7 +3301,7 @@ export default function App() {
                         <span className={`px-4 py-1.5 rounded-full font-black text-sm border-2 ${
                           isSelected ? 'bg-pink-500 border-pink-600 text-white shadow-sm' : 'bg-pink-50 border-pink-100 text-pink-600'
                         }`}>
-                          {opt.price.toFixed(2)} ريال
+                          {(opt.price || 0).toFixed(2)} ريال
                         </span>
                       </button>
                     );
@@ -3377,7 +3394,7 @@ export default function App() {
                               <span className={`text-[10px] font-black shrink-0 ${
                                 isSelected ? 'text-white' : 'text-pink-600'
                               }`}>
-                                +{topping.price.toFixed(2)} ر.س
+                                +{(topping?.price || 0).toFixed(2)} ر.س
                               </span>
                             </button>
                           );
@@ -3411,7 +3428,7 @@ export default function App() {
                               <span className={`text-[10px] font-black shrink-0 ${
                                 isSelected ? 'text-white' : 'text-pink-600'
                               }`}>
-                                +{topping.price.toFixed(2)} ر.س
+                                +{(topping?.price || 0).toFixed(2)} ر.س
                               </span>
                             </button>
                           );
@@ -3445,7 +3462,7 @@ export default function App() {
                               <span className={`text-[10px] font-black shrink-0 ${
                                 isSelected ? 'text-white' : 'text-pink-600'
                               }`}>
-                                +{topping.price.toFixed(2)} ر.س
+                                +{(topping?.price || 0).toFixed(2)} ر.س
                               </span>
                             </button>
                           );
@@ -3542,7 +3559,7 @@ export default function App() {
                       </div>
 
                       {/* Container Base Graphic */}
-                      {selectedContainer.id === 'cone' ? (
+                      {selectedContainer?.id === 'cone' ? (
                         <motion.div 
                           layoutId="containerBaseSmall"
                           className="w-12 h-18 bg-gradient-to-b from-[#D2B48C] to-[#8B5A2B] relative z-10 clip-triangle shadow-sm flex items-center justify-center border-t-2 border-amber-300"
@@ -3566,7 +3583,7 @@ export default function App() {
 
                     <div className="mt-2 text-center">
                       <p className="text-xs font-black text-slate-700">
-                        {selectedContainer.name} • {selectedFlavors.length} نكهات
+                        {selectedContainer?.name || ''} • {(selectedFlavors || []).length} نكهات
                       </p>
                     </div>
                   </div>
@@ -3575,23 +3592,23 @@ export default function App() {
                   <div className="space-y-3 font-sans">
                     <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1 text-[11px] text-slate-600">
                       <div className="flex justify-between items-center">
-                        <span className="font-bold">الوعاء ({selectedContainer.name}):</span>
-                        <span className="font-black text-slate-800">{selectedContainer.price.toFixed(2)} ر.س</span>
+                        <span className="font-bold">الوعاء ({selectedContainer?.name || ''}):</span>
+                        <span className="font-black text-slate-800">{(selectedContainer?.price || 0).toFixed(2)} ر.س</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="font-bold">نكهة الآيسكريم ({selectedFlavors.map(f => f.name).join(' + ')} • {selectedFlavors.length} كرات):</span>
-                        <span className="font-black text-pink-600">+{currentItemPrices.flavorsPrice.toFixed(2)} ر.س</span>
+                        <span className="font-bold">نكهة الآيسكريم ({(selectedFlavors || []).map(f => f?.name || '').join(' + ')} • {(selectedFlavors || []).length} كرات):</span>
+                        <span className="font-black text-pink-600">+{(currentItemPrices.flavorsPrice || 0).toFixed(2)} ر.س</span>
                       </div>
-                      {selectedToppings.length > 0 && (
+                      {(selectedToppings || []).length > 0 && (
                         <div className="flex justify-between items-center">
-                          <span className="font-bold">الإضافات ({selectedToppings.map(t => t.name).join(' + ')}):</span>
-                          <span className="font-black text-emerald-600">+{currentItemPrices.toppingsPrice.toFixed(2)} ر.س</span>
+                          <span className="font-bold">الإضافات ({(selectedToppings || []).map(t => t?.name || '').join(' + ')}):</span>
+                          <span className="font-black text-emerald-600">+{(currentItemPrices.toppingsPrice || 0).toFixed(2)} ر.س</span>
                         </div>
                       )}
                       <hr className="my-1 border-dashed border-slate-200" />
                       <div className="flex justify-between items-center text-xs font-black">
                         <span className="text-slate-800">سعر الحبة الكلي:</span>
-                        <span className="text-pink-600 font-mono">{currentItemPrices.totalUnit.toFixed(2)} ر.س</span>
+                        <span className="text-pink-600 font-mono">{(currentItemPrices.totalUnit || 0).toFixed(2)} ر.س</span>
                       </div>
                     </div>
 
@@ -3630,7 +3647,7 @@ export default function App() {
                         <span>🛒</span>
                         <span>إضافة للفاتورة</span>
                         <span className="bg-white/20 px-1.5 py-0.2 rounded-md text-[10px] font-mono">
-                          {(currentItemPrices.totalUnit * quantity).toFixed(2)} ر.س
+                          {(((currentItemPrices?.totalUnit || 0) * (quantity || 1)) || 0).toFixed(2)} ر.س
                         </span>
                       </button>
                     </div>
@@ -3678,38 +3695,38 @@ export default function App() {
                               className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 flex items-start gap-3 relative group"
                             >
                               <div className="w-10 h-10 rounded-xl bg-pink-500 text-white flex flex-col items-center justify-center text-xl shadow shrink-0">
-                                {item.container.emoji || (item.container.id === 'cone' ? '🍦' : '🍨')}
+                                {item?.container?.emoji || (item?.container?.id === 'cone' ? '🍦' : '🍨')}
                               </div>
 
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between">
                                   <h4 className="text-xs font-black text-slate-900 truncate">
-                                    {item.container.name} <span className="text-pink-500 font-bold font-mono">({item.quantity}x)</span>
+                                    {item?.container?.name || ''} <span className="text-pink-500 font-bold font-mono">({item?.quantity || 1}x)</span>
                                   </h4>
                                   <span className="text-xs font-black text-slate-900 font-mono">
-                                    {item.itemTotal.toFixed(2)} ر.س
+                                    {(item?.itemTotal || 0).toFixed(2)} ر.س
                                   </span>
                                 </div>
 
                                 {/* Flavors representation */}
                                 <div className="flex flex-wrap gap-1 mt-1 font-sans">
-                                  {item.flavors.map((fl, idx) => (
+                                  {(item?.flavors || []).map((fl, idx) => (
                                     <span
                                       key={idx}
                                       className="text-[9px] px-2 py-0.5 rounded-full font-black border"
-                                      style={{ backgroundColor: `${fl.color}25`, borderColor: `${fl.color}80`, color: '#111827' }}
+                                      style={{ backgroundColor: `${fl?.color || '#ec4899'}25`, borderColor: `${fl?.color || '#ec4899'}80`, color: '#111827' }}
                                     >
-                                      {fl.emoji} {fl.name}
+                                      {fl?.emoji || '🍦'} {fl?.name || ''}
                                     </span>
                                   ))}
                                 </div>
 
                                 {/* Toppings representation */}
-                                {item.toppings.length > 0 && (
+                                {(item?.toppings || []).length > 0 && (
                                   <div className="flex flex-wrap gap-1 mt-1.5 pt-1.5 border-t border-dashed border-slate-200">
-                                    {item.toppings.map((tp, idx) => (
+                                    {(item?.toppings || []).map((tp, idx) => (
                                       <span key={idx} className="text-[9px] bg-emerald-50 text-emerald-850 border border-emerald-100 px-1.5 py-0.5 rounded-md font-bold">
-                                        {tp.emoji} {tp.name}
+                                        {tp?.emoji || '✨'} {tp?.name || ''}
                                       </span>
                                     ))}
                                   </div>
@@ -3750,7 +3767,7 @@ export default function App() {
                       <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-200 space-y-2 text-xs font-sans">
                         <div className="flex justify-between text-slate-600">
                           <span className="font-bold">إجمالي أساسي المنتجات:</span>
-                          <span className="font-mono font-black">{(cartTotals.productsSubtotal).toFixed(2)} ر.س</span>
+                          <span className="font-mono font-black">{(cartTotals?.productsSubtotal || 0).toFixed(2)} ر.س</span>
                         </div>
 
                         {/* Customer Name Input Row */}
@@ -3769,16 +3786,16 @@ export default function App() {
                             />
                           </div>
                         </div>
-                        {cartTotals.toppingsSubtotal > 0 && (
+                        {(cartTotals?.toppingsSubtotal || 0) > 0 && (
                           <div className="flex justify-between text-slate-600">
                             <span className="font-bold">إجمالي تكاليف الإضافات الممتازة:</span>
-                            <span className="font-mono font-black">{(cartTotals.toppingsSubtotal).toFixed(2)} ر.س</span>
+                            <span className="font-mono font-black">{(cartTotals?.toppingsSubtotal || 0).toFixed(2)} ر.س</span>
                           </div>
                         )}
-                        {cartTotals.totalDiscounts > 0 && (
+                        {(cartTotals?.totalDiscounts || 0) > 0 && (
                           <div className="flex justify-between text-emerald-600 font-black border-t border-dashed border-slate-200 pt-2">
                             <span>إجمالي قيمة الخصومات المطبقة:</span>
-                            <span className="font-mono animate-pulse">-{cartTotals.totalDiscounts.toFixed(2)} ر.س</span>
+                            <span className="font-mono animate-pulse">-{(cartTotals?.totalDiscounts || 0).toFixed(2)} ر.س</span>
                           </div>
                         )}
 
@@ -3787,7 +3804,7 @@ export default function App() {
                         <div className="flex justify-between text-slate-900 font-black text-sm">
                           <span className="text-slate-800 font-extrabold text-xs">صافي الحساب المستحق:</span>
                           <span className="text-2xl text-pink-600 font-black font-mono">
-                            {cartTotals.finalTotal.toFixed(2)} ر.س
+                            {(cartTotals?.finalTotal || 0).toFixed(2)} ر.س
                           </span>
                         </div>
                       </div>
@@ -3863,7 +3880,7 @@ export default function App() {
                           <span>🍦</span>
                           <span>تأكيد واعتماد الفاتورة</span>
                           <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs font-mono font-black">
-                            {cartTotals.finalTotal.toFixed(2)} ر.س
+                            {(cartTotals?.finalTotal || 0).toFixed(2)} ر.س
                           </span>
                         </button>
 
@@ -4033,20 +4050,20 @@ export default function App() {
 
                         {/* 2. Items List Section */}
                         <div className={`space-y-2 flex-1 min-w-0 ${isList ? 'my-1' : ''}`}>
-                          {order.items.map((it, idx) => (
+                          {(order?.items || []).map((it, idx) => (
                             <div key={idx} className="bg-white/80 p-2 rounded-xl border border-slate-200 text-[11px] space-y-1 font-sans">
                               <div className="flex justify-between font-black text-slate-800">
-                                <span>{it.container.name} ×{it.quantity}</span>
-                                <span className="font-mono text-slate-500">{(it.basePrice * it.quantity).toFixed(2)} ر.س</span>
+                                <span>{it?.container?.name || ''} ×{it?.quantity || 1}</span>
+                                <span className="font-mono text-slate-500">{((it?.basePrice || 0) * (it?.quantity || 1)).toFixed(2)} ر.س</span>
                               </div>
                               <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
                                 <span>🥣 النكهات:</span>
-                                <span className="text-slate-600 font-medium">{it.flavors.map(f => `${f.emoji} ${f.name}`).join('، ')}</span>
+                                <span className="text-slate-600 font-medium">{(it?.flavors || []).map(f => `${f?.emoji || ''} ${f?.name || ''}`).join('، ')}</span>
                               </div>
-                              {it.toppings.length > 0 && (
+                              {(it?.toppings || []).length > 0 && (
                                 <div className="text-[10px] text-emerald-700 font-black flex items-center gap-1">
                                   <span>✨ الإضافات:</span>
-                                  <span className="text-emerald-600 font-medium">{it.toppings.map(t => `${t.emoji} ${t.name}`).join(' + ')}</span>
+                                  <span className="text-emerald-600 font-medium">{(it?.toppings || []).map(t => `${t?.emoji || ''} ${t?.name || ''}`).join(' + ')}</span>
                                 </div>
                               )}
                             </div>
@@ -4063,7 +4080,7 @@ export default function App() {
                           <div className={`space-y-1 font-sans text-right ${isList ? 'shrink-0 lg:text-left' : ''}`}>
                             <div className="flex items-center gap-2 lg:justify-between text-[11px] font-bold text-slate-500">
                               <span className="opacity-75">الإجمالي:</span>
-                              <span className="text-xs sm:text-sm font-black text-pink-600 font-mono">{order.total.toFixed(2)} ريال</span>
+                              <span className="text-xs sm:text-sm font-black text-pink-600 font-mono">{(order?.total || 0).toFixed(2)} ريال</span>
                             </div>
 
                             <div className="flex items-center gap-1.5 lg:justify-between text-[10px] font-bold text-slate-400">
@@ -4291,13 +4308,13 @@ export default function App() {
                 </div>
                 <div className="mt-4">
                   <span className="block text-2xl font-black text-pink-650 font-mono">
-                    {salesStats.totalRevenue.toFixed(2)}
+                    {(salesStats?.totalRevenue || 0).toFixed(2)}
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1 block font-black">عملات بالريال السعودي</span>
                   
                   <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200 flex justify-between text-[9px] font-bold text-slate-500">
-                    <span>🏬 كاشير: {(salesStats.totalRevenue - salesStats.onlineRevenue).toFixed(2)}</span>
-                    <span>🌐 أونلاين: {salesStats.onlineRevenue.toFixed(2)}</span>
+                    <span>🏬 كاشير: {((salesStats?.totalRevenue || 0) - (salesStats?.onlineRevenue || 0)).toFixed(2)}</span>
+                    <span>🌐 أونلاين: {(salesStats?.onlineRevenue || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -4335,7 +4352,7 @@ export default function App() {
                 </div>
                 <div className="mt-4">
                   <span className="block text-2xl font-black text-amber-550 font-mono">
-                    {salesStats.totalDiscountsGiven.toFixed(2)}
+                    {(salesStats?.totalDiscountsGiven || 0).toFixed(2)}
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1 block font-black font-mono">وفر أسعدنا به عملاءنا</span>
                 </div>
@@ -4466,7 +4483,7 @@ export default function App() {
                       </span>
                       <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold px-2.5 py-1 rounded-xl text-[11px]">
                         <span>إجمالي المبيعات المصفاة:</span>
-                        <span className="font-mono font-black">{filteredSalesHistory.reduce((sum, sale) => sum + sale.total, 0).toFixed(2)} ر.س</span>
+                        <span className="font-mono font-black">{((filteredSalesHistory || []).reduce((sum, sale) => sum + (sale?.total || 0), 0)).toFixed(2)} ر.س</span>
                       </span>
                     </div>
 
@@ -4555,16 +4572,16 @@ export default function App() {
                           <td className="py-4 text-slate-500 font-bold">{sale.timestamp}</td>
                           <td className="py-4 max-w-xs">
                             <div className="space-y-1">
-                              {sale.items.map((it, i) => (
+                              {(sale?.items || []).map((it, i) => (
                                 <p key={i} className="text-[11px] text-slate-750 font-black line-clamp-1">
-                                  {it.container.name} {it.quantity}x • نكهات ({it.flavors.map(f => f.emoji).join('')})
+                                  {it?.container?.name || ''} {it?.quantity || 1}x • نكهات ({(it?.flavors || []).map(f => f?.emoji || '').join('')})
                                 </p>
                               ))}
                             </div>
                           </td>
                           <td className="py-4 font-black text-slate-400">بدون خصم</td>
                           <td className="py-4 font-mono font-black text-slate-850 text-sm">
-                            {(sale.subtotal !== undefined ? sale.subtotal : sale.total).toFixed(2)} ريال{' '}
+                            {((sale?.subtotal !== undefined ? sale.subtotal : sale?.total) || 0).toFixed(2)} ريال{' '}
                             {sale.paymentMethod === 'card' ? (
                               <span
                                 className="inline-flex items-center gap-1 text-[9px] font-black text-slate-600 bg-slate-100 border border-slate-200 py-0.5 px-1.5 rounded-md"
@@ -4653,11 +4670,11 @@ export default function App() {
                     <span className="text-xl">{profitStats.netProfit >= 0 ? '📈' : '📉'}</span>
                   </div>
                   <div className="mt-4 font-mono">
-                    <span className={`block text-3xl font-black ${profitStats.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {profitStats.netProfit.toFixed(2)} ر.س
+                    <span className={`block text-3xl font-black ${(profitStats?.netProfit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {(profitStats?.netProfit || 0).toFixed(2)} ر.س
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block font-black">
-                      هامش الربح الحالي: <span className="font-bold underline">{profitStats.profitMargin.toFixed(1)}%</span>
+                      هامش الربح الحالي: <span className="font-bold underline">{(profitStats?.profitMargin || 0).toFixed(1)}%</span>
                     </span>
                   </div>
                 </div>
@@ -4672,7 +4689,7 @@ export default function App() {
                   </div>
                   <div className="mt-4 font-mono">
                     <span className="block text-3xl font-black text-indigo-700">
-                      {profitStats.totalRevenue.toFixed(2)} ر.س
+                      {(profitStats?.totalRevenue || 0).toFixed(2)} ر.س
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block font-black">
                       دورة عمل مصفاة: {filteredProfitsSales.length} عملية مبيعات
@@ -4690,7 +4707,7 @@ export default function App() {
                   </div>
                   <div className="mt-4 font-mono">
                     <span className="block text-3xl font-black text-rose-700">
-                      {profitStats.totalExpenses.toFixed(2)} ر.س
+                      {(profitStats?.totalExpenses || 0).toFixed(2)} ر.س
                     </span>
                     <span className="text-[10px] text-slate-400 mt-1 block font-black">
                       مسجلة سحابياً: {filteredProfitsExpenses.length} بند مصروف
@@ -4970,7 +4987,7 @@ export default function App() {
                                   <span>{item.emoji}</span>
                                   <span>{item.name}</span>
                                 </span>
-                                <span className="font-mono">{pct.toFixed(1)}% <span className="text-slate-400 font-sans">({amt.toFixed(2)} ر.س)</span></span>
+                                <span className="font-mono">{(pct || 0).toFixed(1)}% <span className="text-slate-400 font-sans">({(amt || 0).toFixed(2)} ر.س)</span></span>
                               </div>
                               <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border">
                                 <div 
@@ -4998,7 +5015,7 @@ export default function App() {
                           <div className="space-y-1">
                             <div className="flex justify-between text-[10px] font-extrabold text-slate-600">
                               <span>💰 إجمالي الإيراد (100%):</span>
-                              <span className="font-mono text-indigo-700 font-black">{profitStats.totalRevenue.toFixed(2)} ر.س</span>
+                              <span className="font-mono text-indigo-700 font-black">{(profitStats?.totalRevenue || 0).toFixed(2)} ر.س</span>
                             </div>
                             <div className="w-full bg-white rounded-full h-3 overflow-hidden border">
                               <div className="h-full bg-indigo-500 w-full"></div>
@@ -5010,10 +5027,10 @@ export default function App() {
                             <div className="flex justify-between text-[10px] font-extrabold text-slate-600">
                               <span>💸 المصروف الكلي من الإيراد:</span>
                               <span className="font-mono text-rose-700 font-black">
-                                {profitStats.totalRevenue > 0 
-                                  ? `${((profitStats.totalExpenses / profitStats.totalRevenue) * 100).toFixed(1)}%`
+                                {(profitStats?.totalRevenue || 0) > 0 
+                                  ? `${(((profitStats?.totalExpenses || 0) / (profitStats?.totalRevenue || 1)) * 100).toFixed(1)}%`
                                   : '0.0%'
-                                } ({profitStats.totalExpenses.toFixed(2)} ر.س)
+                                } ({(profitStats?.totalExpenses || 0).toFixed(2)} ر.س)
                               </span>
                             </div>
                             <div className="w-full bg-white rounded-full h-3 overflow-hidden border">
@@ -5026,9 +5043,9 @@ export default function App() {
                         </div>
 
                         <div className="text-[10px] text-slate-500 font-extrabold border-t border-dashed border-slate-200 pt-2 text-center">
-                          {profitStats.totalRevenue >= profitStats.totalExpenses 
-                            ? `صافي الأرباح المحققة بعد الخصم: ${(profitStats.totalRevenue - profitStats.totalExpenses).toFixed(2)} ر.س 🎉`
-                            : `العجز التشغيلي الحالي للفترة: ${(profitStats.totalExpenses - profitStats.totalRevenue).toFixed(2)} ر.س ⚠️`
+                          {(profitStats?.totalRevenue || 0) >= (profitStats?.totalExpenses || 0) 
+                            ? `صافي الأرباح المحققة بعد الخصم: ${((profitStats?.totalRevenue || 0) - (profitStats?.totalExpenses || 0)).toFixed(2)} ر.س 🎉`
+                            : `العجز التشغيلي الحالي للفترة: ${((profitStats?.totalExpenses || 0) - (profitStats?.totalRevenue || 0)).toFixed(2)} ر.س ⚠️`
                           }
                         </div>
                       </div>
@@ -5097,7 +5114,7 @@ export default function App() {
                                   {exp.notes || '---'}
                                 </td>
                                 <td className="py-3.5 font-mono font-black text-rose-650 text-left text-[13px]">
-                                  -{exp.amount.toFixed(2)} ر.س
+                                  -{(exp?.amount || 0).toFixed(2)} ر.س
                                 </td>
                                 <td className="py-3.5 text-center">
                                   <button
@@ -6102,20 +6119,20 @@ export default function App() {
                     <span>المجموع</span>
                   </div>
 
-                  {completedOrder.items.map((item, idx) => (
+                  {(completedOrder?.items || []).map((item, idx) => (
                     <div key={idx} className="space-y-0.5">
                       <div className="flex justify-between font-black text-slate-900">
-                        <span>{item.container.name} ×{item.quantity}</span>
-                        <span>{item.itemTotal.toFixed(2)} ريال</span>
+                        <span>{item?.container?.name || ''} ×{item?.quantity || 1}</span>
+                        <span>{(item?.itemTotal || 0).toFixed(2)} ريال</span>
                       </div>
                       {/* Flavors underlay */}
                       <div className="text-[10px] text-slate-500 font-bold">
-                        نكهات: {item.flavors.map(f => f.name).join('، ')}
+                        نكهات: {(item?.flavors || []).map(f => f?.name || '').join('، ')}
                       </div>
                       {/* Toppings underlay */}
-                      {item.toppings.length > 0 && (
+                      {(item?.toppings || []).length > 0 && (
                         <div className="text-[10px] text-emerald-600 font-bold">
-                          إضافات: {item.toppings.map(t => t.name).join(' + ')}
+                          إضافات: {(item?.toppings || []).map(t => t?.name || '').join(' + ')}
                         </div>
                       )}
                     </div>
@@ -6126,17 +6143,17 @@ export default function App() {
                 <div className="pt-4 border-t-2 border-dashed border-slate-350 font-mono text-[11px] space-y-1.5 text-slate-600">
                   <div className="flex justify-between font-bold">
                     <span>المجموع الفرعي للآيس كريم:</span>
-                    <span>{completedOrder.subtotal.toFixed(2)} ريال</span>
+                    <span>{(completedOrder?.subtotal || 0).toFixed(2)} ريال</span>
                   </div>
-                  {completedOrder.toppingsTotal > 0 && (
+                  {(completedOrder?.toppingsTotal || 0) > 0 && (
                     <div className="flex justify-between font-bold">
                       <span>إجمالي تكلفة الإضافات الحصرية:</span>
-                      <span>+{completedOrder.toppingsTotal.toFixed(2)} ريال</span>
+                      <span>+{(completedOrder?.toppingsTotal || 0).toFixed(2)} ريال</span>
                     </div>
                   )}
                   <div className="flex justify-between text-xs text-slate-900 font-black pt-2 border-t border-slate-200 text-sm">
                     <span>الحساب الإجمالي المقبوض:</span>
-                    <span className="text-pink-650 font-black">{(completedOrder.subtotal + completedOrder.toppingsTotal).toFixed(2)} ريال</span>
+                    <span className="text-pink-650 font-black">{((completedOrder?.subtotal || 0) + (completedOrder?.toppingsTotal || 0)).toFixed(2)} ريال</span>
                   </div>
 
                   <div className="flex justify-between text-[10px] text-slate-500 pt-1 font-bold">
@@ -6333,7 +6350,7 @@ export default function App() {
                   <div className="mt-3 bg-slate-50 border-2 border-slate-200 rounded-2xl p-3 text-right space-y-1">
                     <div className="text-[11px] font-bold text-slate-500">اسم المصروف: <span className="font-black text-slate-800">{exp.title}</span></div>
                     <div className="text-[11px] font-bold text-slate-500">الفئة: <span className="font-black text-slate-800">{exp.category}</span></div>
-                    <div className="text-[11px] font-bold text-slate-500">المبلغ: <span className="font-black text-rose-650">{exp.amount.toFixed(2)} ر.س</span></div>
+                    <div className="text-[11px] font-bold text-slate-500">المبلغ: <span className="font-black text-rose-650">{(exp.amount || 0).toFixed(2)} ر.س</span></div>
                   </div>
                 </div>
                 <div className="flex gap-3 pt-2">
@@ -6366,4 +6383,59 @@ export default function App() {
 
     </div>
   );
+}
+
+// --- ERROR BOUNDARY WRAPPER ---
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState;
+  public props: ErrorBoundaryProps;
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.props = props;
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Caught runtime error in AppErrorBoundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center font-sans dir-rtl">
+          <div className="bg-slate-800 border-2 border-pink-500/50 p-8 rounded-3xl max-w-md shadow-2xl space-y-4">
+            <span className="text-5xl block mb-2">🍦</span>
+            <h1 className="text-xl font-black text-pink-400">إعادة تنشيط شاشة كاشير الآيس كريم</h1>
+            <p className="text-xs text-slate-300 leading-relaxed font-bold">
+              حدث تنبيه أداء بسيط في الواجهة. يرجى الضغط على الزر لتحديث النظام والعودة فوراً لمتابعة المبيعات.
+            </p>
+            <button
+              onClick={() => {
+                this.state = { hasError: false, error: null };
+                window.location.reload();
+              }}
+              className="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-black py-3.5 px-6 rounded-2xl transition cursor-pointer text-sm shadow-lg border-b-4 border-pink-700"
+            >
+              🔄 إعادة تحميل النظام والتطبيق
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
