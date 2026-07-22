@@ -544,6 +544,11 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'seller' | 'customer'>(() => {
     return (window.location.hash === '#/seller' || window.location.hash === '#seller') ? 'seller' : 'customer';
   });
+  const [isAuthUnlocked, setIsAuthUnlocked] = useState<boolean>(() => {
+    return sessionStorage.getItem('admin_unlocked') === 'true';
+  });
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [savedCustomerCart, setSavedCustomerCart] = useState<CartItem[]>([]);
   const [selfCustomerName, setSelfCustomerName] = useState<string>('');
   const [recentOnlineOrderId, setRecentOnlineOrderId] = useState<string | null>(() => {
@@ -1856,6 +1861,20 @@ export default function App() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              {/* Staff Cashier Entry Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = '#/seller';
+                  setViewMode('seller');
+                }}
+                title="دخول لوحة الكاشير والإدارة"
+                className="relative flex items-center justify-center gap-1.5 font-black px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 transition duration-200 shrink-0 text-xs cursor-pointer active:scale-95 shadow-sm"
+              >
+                <span>🔐</span>
+                <span className="font-sans text-[11px]">الكاشير</span>
+              </button>
+
               {/* Previous Orders History Button */}
               <button
                 type="button"
@@ -3068,6 +3087,128 @@ export default function App() {
     );
   }
 
+  // --- ADMIN & CASHIER PASSWORD GUARD SCREEN ---
+  if (viewMode === 'seller' && !isAuthUnlocked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-pink-950 text-white font-sans flex items-center justify-center p-4 select-none" dir="rtl">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="bg-slate-900/90 backdrop-blur-xl border-2 border-pink-500/20 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-6"
+        >
+          <div className="w-20 h-20 bg-gradient-to-tr from-pink-500 to-rose-500 text-white rounded-3xl flex items-center justify-center text-4xl mx-auto shadow-lg shadow-pink-500/30 border-2 border-pink-300/40">
+            🔐
+          </div>
+          
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">لوحة الإدارة والكاشير</h2>
+            <p className="text-slate-400 text-xs sm:text-sm mt-2 font-bold leading-relaxed">
+              يرجى إدخال رمز المرور المعتمد لدخول النظام
+            </p>
+          </div>
+
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (passwordInput === '055199') {
+                setIsAuthUnlocked(true);
+                sessionStorage.setItem('admin_unlocked', 'true');
+                setPasswordError(null);
+                setPasswordInput('');
+              } else {
+                setPasswordError('رمز المرور غير صحيح! حاول مرة أخرى');
+              }
+            }}
+            className="space-y-4"
+          >
+            <div className="relative">
+              <input 
+                type="password"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="• • • • • •"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setPasswordError(null);
+                }}
+                className="w-full bg-slate-950/80 border-2 border-pink-500/30 focus:border-pink-500 text-pink-400 text-center font-mono text-3xl font-black tracking-[0.3em] py-3.5 px-4 rounded-2xl outline-none transition shadow-inner placeholder:text-slate-700 placeholder:tracking-normal placeholder:font-sans placeholder:text-base"
+                autoFocus
+              />
+              {passwordInput && (
+                <button
+                  type="button"
+                  onClick={() => setPasswordInput('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-black bg-slate-800 px-2 py-1 rounded-lg cursor-pointer"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+
+            {passwordError && (
+              <p className="text-rose-400 text-xs font-black bg-rose-500/10 border border-rose-500/20 py-2.5 px-3 rounded-xl animate-bounce">
+                ⚠️ {passwordError}
+              </p>
+            )}
+
+            {/* Quick Numeric Keypad for Touchscreens */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((btn) => (
+                <button
+                  key={btn}
+                  type="button"
+                  onClick={() => {
+                    setPasswordError(null);
+                    if (btn === 'C') {
+                      setPasswordInput('');
+                    } else if (btn === '⌫') {
+                      setPasswordInput(prev => prev.slice(0, -1));
+                    } else {
+                      if (passwordInput.length < 10) {
+                        setPasswordInput(prev => prev + btn);
+                      }
+                    }
+                  }}
+                  className={`py-3 rounded-xl font-mono text-lg font-black transition cursor-pointer active:scale-95 border ${
+                    btn === 'C' 
+                      ? 'bg-slate-800 hover:bg-slate-700 text-rose-400 border-slate-700'
+                      : btn === '⌫'
+                        ? 'bg-slate-800 hover:bg-slate-700 text-amber-400 border-slate-700'
+                        : 'bg-slate-800/80 hover:bg-pink-600/20 hover:border-pink-500/50 text-white border-slate-700/80'
+                  }`}
+                >
+                  {btn}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white font-black py-4 px-6 rounded-2xl transition cursor-pointer text-sm shadow-lg shadow-pink-500/20 border-b-4 border-pink-700 active:scale-98 flex items-center justify-center gap-2"
+            >
+              <span>دخول لوحة الكاشير والإدارة</span>
+              <span>✨</span>
+            </button>
+          </form>
+
+          <div className="pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.hash = '#/';
+                setViewMode('customer');
+              }}
+              className="text-xs font-bold text-slate-400 hover:text-pink-400 transition cursor-pointer py-1"
+            >
+              ← العودة لشاشة الطلب الذاتي للعملاء
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-pink-50/40 text-slate-800 font-sans antialiased pb-12 selection:bg-pink-100 border-8 border-white" dir="rtl">
       
@@ -3116,6 +3257,22 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-black text-pink-600 tracking-tight leading-none uppercase">سحر الآيس كريم</h1>
                 <span className="bg-pink-100 text-pink-600 text-[11px] font-black px-2.5 py-0.5 rounded-full border border-pink-200 select-none">الذكي والسلس</span>
+                
+                {/* Lock / Exit Admin Panel Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAuthUnlocked(false);
+                    sessionStorage.removeItem('admin_unlocked');
+                    window.location.hash = '#/';
+                    setViewMode('customer');
+                  }}
+                  title="قفل لوحة الكاشير والخروج"
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-2.5 py-1 rounded-xl font-black text-[10px] transition flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
+                >
+                  <span>🔒</span>
+                  <span>قفل اللوحة</span>
+                </button>
               </div>
               <p className="text-pink-400 font-bold text-xs mt-1.5 tracking-wider">نظام مبيعات وحساب أكواب وبسكوتات الآيسكريم الفورية</p>
             </div>
