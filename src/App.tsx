@@ -3153,7 +3153,7 @@ export default function App() {
             )}
 
             {/* Quick Numeric Keypad for Touchscreens */}
-            <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="grid grid-cols-3 gap-2 pt-1" dir="ltr">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((btn) => (
                 <button
                   key={btn}
